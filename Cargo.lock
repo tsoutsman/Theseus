@@ -1996,6 +1996,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "mutex"
+version = "0.1.0"
+
+[[package]]
 name = "mutex_sleep"
 version = "0.1.0"
 dependencies = [
@@ -2789,6 +2793,7 @@ name = "semaphore"
 version = "0.1.0"
 dependencies = [
  "irq_safety",
+ "scheduler",
  "task",
 ]
 
