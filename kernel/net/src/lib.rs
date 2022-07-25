@@ -2,141 +2,64 @@
 
 extern crate alloc;
 
+use alloc::{boxed::Box, sync::Arc, vec::Vec};
+use smoltcp::wire::{IpAddress, Ipv4Address};
+use spin::Mutex;
+
+mod device;
 mod error;
+mod interface;
 
-use alloc::collections::BTreeMap;
-use nic_buffers::{ReceivedFrame, TransmitBuffer};
-use smoltcp::{iface, phy, wire};
-
+pub use device::*;
 pub use error::{Error, Result};
-pub use phy::DeviceCapabilities;
-pub use wire::{EthernetAddress, IpAddress, IpCidr};
+pub use interface::*;
 
-pub struct Interface<'a, T>
-where
-    T: Device,
-    DeviceWrapper<'a, T>: for<'d> phy::Device<'d>,
-{
-    inner: iface::Interface<'static, DeviceWrapper<'a, T>>,
-}
-
-impl<'a, T> Interface<'a, T>
-where
-    T: Device,
-    // TODO: Remove this bound so that DeviceWrapper (and TxToken/RxToken) don't have to be public.
-    DeviceWrapper<'a, T>: for<'d> phy::Device<'d>,
-{
-    pub fn new(card: &'a mut T, ip: wire::IpCidr, gateway: wire::IpCidr) -> Result<Self> {
-        // FIXME: Check if unicast?
-        let hardware_addr = EthernetAddress(card.mac_address()).into();
-        let mut routes = iface::Routes::new(BTreeMap::new());
-
-        match gateway.address() {
-            IpAddress::Ipv4(addr) => routes.add_default_ipv4_route(addr),
-            IpAddress::Ipv6(addr) => routes.add_default_ipv6_route(addr),
-            _ => return Err(Error::InvalidGateway),
-        }?;
-
-        Ok(Self {
-            inner: iface::InterfaceBuilder::new(DeviceWrapper(card), [])
-                // FIXME: Use an actual random seed
-                .random_seed(0)
-                .hardware_addr(hardware_addr)
-                .ip_addrs([ip])
-                .routes(routes)
-                .neighbor_cache(iface::NeighborCache::new(BTreeMap::new()))
-                .finalize(),
-        })
-    }
-}
-
-pub trait Device {
-    fn send(
-        &mut self,
-        transmit_buffer: nic_buffers::TransmitBuffer,
-    ) -> core::result::Result<(), &'static str>;
-
-    fn receive(&mut self) -> Option<ReceivedFrame>;
-
-    fn poll_receive(&mut self) -> core::result::Result<(), &'static str>;
-
-    fn mac_address(&self) -> [u8; 6];
-
-    fn capabilities(&self) -> DeviceCapabilities {
-        DeviceCapabilities::default()
-    }
-}
-
-/// Wrapper around a NIC.
+/// A randomly chosen IP address that must be outside of the DHCP range.
 ///
-/// We use this because we can't directly implement [`phy::Device`] for `T` due
-/// to the following error:
-/// ```
-/// error[E0210]: type parameter `T` must be used as the type parameter for some local type (e.g., `MyStruct<T>`)
-/// ```
-#[doc(hidden)]
-pub struct DeviceWrapper<'a, T>(&'a mut T)
-where
-    T: 'a + Device;
+/// The default QEMU user-slirp network gives IP address of `10.0.2.*`.
+const DEFAULT_LOCAL_IP: &str = "10.0.2.15/24";
 
-impl<'a, T> phy::Device<'a> for DeviceWrapper<'a, T>
+/// Standard home router address.
+///
+/// `10.0.2.2` is the default QEMU user-slirp networking gateway IP.
+const DEFAULT_GATEWAY_IP: IpAddress = IpAddress::Ipv4(Ipv4Address::new(10, 0, 2, 2));
+
+pub type InterfaceRef = Arc<Mutex<Interface<dyn Device + Send>>>;
+
+// TODO: Make inner mutex non spin?
+// TODO: Make outer mutex rwlock?
+static NETWORK_INTERFACES: Mutex<Vec<InterfaceRef>> = Mutex::new(Vec::new());
+
+pub fn register_device<T>(device: T) -> Result<()>
 where
-    T: 'a + Device,
+    T: 'static + Device + Send,
 {
-    type RxToken = RxToken;
-
-    type TxToken = TxToken<'a, T>;
-
-    fn receive(&'a mut self) -> Option<(Self::RxToken, Self::TxToken)> {
-        let received_frame = self.0.receive()?;
-        Some((RxToken(received_frame), TxToken(self.0)))
-    }
-
-    fn transmit(&'a mut self) -> Option<Self::TxToken> {
-        Some(TxToken(self.0))
-    }
-
-    fn capabilities(&self) -> DeviceCapabilities {
-        self.0.capabilities()
-    }
+    // TODO: This is needed because DeviceWrapper can't store the T, because the
+    // iface::Interface must be Sized. Ideally we would remove that bound upstream
+    // but this works for now.
+    let reference: &'static mut (dyn Device + Send) = Box::leak(Box::new(device));
+    let interface = Arc::new(Mutex::new(Interface::new(
+        reference,
+        // TODO: use DHCP to acquire an IP address and gateway.
+        DEFAULT_LOCAL_IP.parse().unwrap(),
+        DEFAULT_GATEWAY_IP,
+    )?));
+    NETWORK_INTERFACES.lock().push(interface);
+    Ok(())
 }
 
-#[doc(hidden)]
-pub struct RxToken(ReceivedFrame);
-
-impl phy::RxToken for RxToken {
-    fn consume<R, F>(mut self, _timestamp: smoltcp::time::Instant, f: F) -> smoltcp::Result<R>
-    where
-        F: FnOnce(&mut [u8]) -> smoltcp::Result<R>,
-    {
-        // FIXME: Support handling frame of multiple buffers
-        f(self.0 .0[0].as_slice_mut())
-    }
+/// Returns a list of available interfaces behind a mutex.
+pub fn interfaces() -> &'static Mutex<Vec<InterfaceRef>> {
+    &NETWORK_INTERFACES
 }
 
-#[doc(hidden)]
-pub struct TxToken<'a, T>(&'a mut T)
-where
-    T: 'a + Device;
-
-impl<'a, T> phy::TxToken for TxToken<'a, T>
-where
-    T: 'a + Device,
-{
-    fn consume<R, F>(
-        self,
-        _timestamp: smoltcp::time::Instant,
-        len: usize,
-        f: F,
-    ) -> smoltcp::Result<R>
-    where
-        F: FnOnce(&mut [u8]) -> smoltcp::Result<R>,
-    {
-        // FIXME: Unwraps
-        let len = u16::try_from(len).unwrap();
-        let mut buf = TransmitBuffer::new(len).unwrap();
-        let r = f(buf.as_slice_mut())?;
-        self.0.send(buf).unwrap();
-        Ok(r)
-    }
+/// Gets the interface with the specified `index`.
+///
+/// If `index` is `None` the first interface is returned.
+pub fn get_interface(index: Option<usize>) -> Option<InterfaceRef> {
+    let index = index.unwrap_or(0);
+    let interfaces = NETWORK_INTERFACES.lock();
+    let interface = interfaces.get(index).map(Arc::clone);
+    drop(interfaces);
+    interface
 }
