@@ -1,8 +1,17 @@
-use nic_buffers::{ReceivedFrame, TransmitBuffer};
 use smoltcp::phy;
 
+pub use nic_buffers::{ReceivedFrame, TransmitBuffer};
 pub use phy::DeviceCapabilities;
 
+/// Standard maximum transition unit for ethernet cards.
+const STANDARD_MTU: usize = 1500;
+
+/// Network devices.
+///
+/// Devices implementing this trait can then be registered using
+/// [`register_device`].
+///
+/// [`register_device`]: crate::register_device
 pub trait Device {
     fn send(
         &mut self,
@@ -16,7 +25,9 @@ pub trait Device {
     fn mac_address(&self) -> [u8; 6];
 
     fn capabilities(&self) -> DeviceCapabilities {
-        DeviceCapabilities::default()
+        let mut caps = DeviceCapabilities::default();
+        caps.max_transmission_unit = STANDARD_MTU;
+        caps
     }
 }
 

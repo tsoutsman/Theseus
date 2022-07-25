@@ -30,7 +30,11 @@ pub type InterfaceRef = Arc<Mutex<Interface<dyn Device + Send>>>;
 // TODO: Make outer mutex rwlock?
 static NETWORK_INTERFACES: Mutex<Vec<InterfaceRef>> = Mutex::new(Vec::new());
 
-pub fn register_device<T>(device: T) -> Result<()>
+/// Registers a network device, returning the index.
+///
+/// The function will convert the device to an interface and it will then be
+/// accessible using [`get_interface`].
+pub fn register_device<T>(device: T) -> Result<usize>
 where
     T: 'static + Device + Send,
 {
@@ -44,8 +48,13 @@ where
         DEFAULT_LOCAL_IP.parse().unwrap(),
         DEFAULT_GATEWAY_IP,
     )?));
-    NETWORK_INTERFACES.lock().push(interface);
-    Ok(())
+
+    let mut interfaces = NETWORK_INTERFACES.lock();
+    interfaces.push(interface);
+    let index = interfaces.len() - 1;
+    drop(interfaces);
+
+    Ok(index)
 }
 
 /// Returns a list of available interfaces behind a mutex.

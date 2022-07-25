@@ -168,6 +168,24 @@ impl NetworkInterfaceCard for E1000Nic {
     }
 }
 
+impl net::Device for E1000Nic {
+    fn send(&mut self, buf: TransmitBuffer) -> Result<(), &'static str> {
+        self.tx_queue.send_on_queue(buf);
+        Ok(())
+    }
+
+    fn receive(&mut self) -> Option<ReceivedFrame> {
+        self.rx_queue.received_frames.pop_front()
+    }
+    
+    fn poll_receive(&mut self) -> Result<(), &'static str> {
+        self.rx_queue.poll_queue_and_store_received_packets()
+    }
+    
+    fn mac_address(&self) -> [u8; 6] {
+        self.mac_spoofed.unwrap_or(self.mac_hardware)
+    }
+}
 
 
 /// Functions that setup the NIC struct and handle the sending and receiving of packets.

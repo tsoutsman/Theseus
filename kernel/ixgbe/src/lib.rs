@@ -192,21 +192,45 @@ pub struct IxgbeNic {
 impl NetworkInterfaceCard for IxgbeNic {
 
     fn send_packet(&mut self, transmit_buffer: TransmitBuffer) -> Result<(), &'static str> {
-        // by default, when using the physical NIC interface, we send on queue 0.
+        // When using the physical NIC interface, we send on queue zero by default.
         let qid = 0;
         self.tx_queues[qid].send_on_queue(transmit_buffer);
         Ok(())
     }
 
     fn get_received_frame(&mut self) -> Option<ReceivedFrame> {
-        // by default, when using the physical NIC interface, we receive on queue 0.
+        // When using the physical NIC interface, we receive on queue zero by default.
         let qid = 0;
-        // return one frame from the queue's received frames
         self.rx_queues[qid].received_frames.pop_front()
     }
 
     fn poll_receive(&mut self) -> Result<(), &'static str> {
-        // by default, when using the physical NIC interface, we receive on queue 0.
+        // When using the physical NIC interface, we receive on queue zero by default.
+        let qid = 0;
+        self.rx_queues[qid].poll_queue_and_store_received_packets()
+    }
+
+    fn mac_address(&self) -> [u8; 6] {
+        self.mac_spoofed.unwrap_or(self.mac_hardware)
+    }
+}
+
+impl net::Device for IxgbeNic {
+    fn send(&mut self, buf: TransmitBuffer) -> Result<(), &'static str> {
+        // When using the physical NIC interface, we send on queue zero by default.
+        let qid = 0;
+        self.tx_queues[qid].send_on_queue(buf);
+        Ok(())
+    }
+
+    fn receive(&mut self) -> Option<ReceivedFrame> {
+        // When using the physical NIC interface, we receive on queue zero by default.
+        let qid = 0;
+        self.rx_queues[qid].received_frames.pop_front()
+    }
+
+    fn poll_receive(&mut self) -> Result<(), &'static str> {
+        // When using the physical NIC interface, we receive on queue zero by default.
         let qid = 0;
         self.rx_queues[qid].poll_queue_and_store_received_packets()
     }
