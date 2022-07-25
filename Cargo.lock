@@ -906,7 +906,7 @@ dependencies = [
  "network_manager",
  "nic_buffers",
  "owning_ref",
- "smoltcp",
+ "smoltcp 0.5.0",
 ]
 
 [[package]]
@@ -1252,7 +1252,7 @@ dependencies = [
  "log",
  "network_manager",
  "percent-encoding",
- "smoltcp",
+ "smoltcp 0.5.0",
  "smoltcp_helper",
 ]
 
@@ -1675,6 +1675,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "fdcec5e97041c7f0f1c5b7d93f12e57293c831c646f4cc7a5db59460c7ea8de6"
 
 [[package]]
+name = "managed"
+version = "0.8.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0ca88d725a0a943b096803bd34e73a4437208b6077654cc4ecb2947a5f91618d"
+
+[[package]]
 name = "mapper_spillful"
 version = "0.1.0"
 dependencies = [
@@ -2040,6 +2046,14 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "546c37ac5d9e56f55e73b677106873d9d9f5190605e41a856503623648488cae"
 
 [[package]]
+name = "net"
+version = "0.1.0"
+dependencies = [
+ "nic_buffers",
+ "smoltcp 0.8.1",
+]
+
+[[package]]
 name = "network_interface_card"
 version = "0.1.0"
 dependencies = [
@@ -2054,7 +2068,7 @@ dependencies = [
  "lazy_static",
  "log",
  "owning_ref",
- "smoltcp",
+ "smoltcp 0.5.0",
  "spin 0.9.0",
 ]
 
@@ -2207,7 +2221,7 @@ dependencies = [
  "percent-encoding",
  "rand",
  "sha3",
- "smoltcp",
+ "smoltcp 0.5.0",
  "smoltcp_helper",
  "spawn",
  "task",
@@ -2342,7 +2356,7 @@ dependencies = [
  "log",
  "network_manager",
  "ota_update_client",
- "smoltcp",
+ "smoltcp 0.5.0",
  "smoltcp_helper",
  "terminal_print",
  "upd",
@@ -2976,7 +2990,18 @@ source = "git+https://github.com/m-labs/smoltcp#0fedb1db9aa26712830822dd61f065de
 dependencies = [
  "bitflags",
  "byteorder",
- "managed",
+ "managed 0.7.1",
+]
+
+[[package]]
+name = "smoltcp"
+version = "0.8.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "72165c4af59f5f19c7fb774b88b95660591b612380305b5f4503157341a9f7ee"
+dependencies = [
+ "bitflags",
+ "byteorder",
+ "managed 0.8.0",
 ]
 
 [[package]]
@@ -2986,7 +3011,7 @@ dependencies = [
  "hpet",
  "log",
  "network_manager",
- "smoltcp",
+ "smoltcp 0.5.0",
  "spin 0.9.0",
 ]
 
@@ -3688,7 +3713,7 @@ dependencies = [
  "network_manager",
  "ota_update_client",
  "path",
- "smoltcp",
+ "smoltcp 0.5.0",
  "spin 0.9.0",
  "task",
  "terminal_print",

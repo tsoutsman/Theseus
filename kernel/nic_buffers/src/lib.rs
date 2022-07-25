@@ -20,6 +20,7 @@ pub struct TransmitBuffer {
     pub phys_addr: PhysicalAddress,
     pub length: u16,
 }
+
 impl TransmitBuffer {
     /// Creates a new TransmitBuffer with the specified size in bytes.
     /// The size is a `u16` because that is the maximum size of an NIC transmit buffer. 
@@ -29,17 +30,21 @@ impl TransmitBuffer {
             EntryFlags::WRITABLE | EntryFlags::NO_CACHE | EntryFlags::NO_EXECUTE,
         )?;
         Ok(TransmitBuffer {
-            mp: mp,
+            mp,
             phys_addr: starting_phys_addr,
             length: size_in_bytes,
         })
     }
 
-    // / Send this `TransmitBuffer` out through the given `NetworkInterfaceCard`. 
-    // / This function consumes this `TransmitBuffer`.
-    // pub fn send<N: NetworkInterfaceCard>(self, nic: &mut N) -> Result<(), &'static str> {
-    //     nic.send_packet(self)
-    // }
+    pub fn as_slice(&self) -> &[u8] {
+        // SAFETY: We checked that the mapped pages are >= to self.length during initialisation.
+        self.mp.as_slice(0, usize::from(self.length)).unwrap() 
+    }
+    
+    pub fn as_slice_mut(&mut self) -> &mut [u8] {
+        // SAFETY: We checked that the mapped pages are >= to self.length during initialisation and that they are writable.
+        self.mp.as_slice_mut(0, usize::from(self.length)).unwrap()
+    }
 }
 
 impl Deref for TransmitBuffer {
@@ -65,29 +70,50 @@ pub struct ReceiveBuffer {
     pub length: u16,
     pool: &'static mpmc::Queue<ReceiveBuffer>,
 }
+
 impl ReceiveBuffer {
     /// Creates a new ReceiveBuffer with the given `MappedPages`, `PhysicalAddress`, and `length`. 
     /// When this ReceiveBuffer object is dropped, it will be returned to the given `pool`.
+    ///
+    /// # Panics
+    ///
+    /// This function panics if the `length` is smaller than `mp.size_in_bytes()` or if `mp` are not writable.
     pub fn new(mp: MappedPages, phys_addr: PhysicalAddress, length: u16, pool: &'static mpmc::Queue<ReceiveBuffer>) -> ReceiveBuffer {
+        assert!(usize::from(length) <= mp.size_in_bytes());
+        assert!(mp.flags().is_writable());
+
         ReceiveBuffer {
-            mp: mp,
-            phys_addr: phys_addr,
-            length: length,
-            pool: pool,
+            mp,
+            phys_addr,
+            length,
+            pool,
         }
     }
+    
+    pub fn as_slice(&self) -> &[u8] {
+        // SAFETY: We checked that the mapped pages are >= to self.length during initialisation.
+        self.mp.as_slice(0, usize::from(self.length)).unwrap() 
+    }
+    
+    pub fn as_slice_mut(&mut self) -> &mut [u8] {
+        // SAFETY: We checked that the mapped pages are >= to self.length during initialisation and that they are writable.
+        self.mp.as_slice_mut(0, usize::from(self.length)).unwrap()
+    }
 }
+
 impl Deref for ReceiveBuffer {
     type Target = MappedPages;
     fn deref(&self) -> &MappedPages {
         &self.mp
     }
 }
+
 impl DerefMut for ReceiveBuffer {
     fn deref_mut(&mut self) -> &mut MappedPages {
         &mut self.mp
     }
 }
+
 impl Drop for ReceiveBuffer {
     fn drop(&mut self) {
         // trace!("ReceiveBuffer::drop(): length: {:5}, phys_addr: {:#X}, vaddr: {:#X}", self.length,  self.phys_addr, self.mp.start_address());
@@ -97,6 +123,8 @@ impl Drop for ReceiveBuffer {
         // we construct a new ReceiveBuffer object that is identical to this one being dropped,
         // and do an in-place replacement of its `MappedPages` object with an empty MP object,
         // allowing us to take ownership of the real MP object and put it into the new_rb. 
+        
+        // FIXME: Is MappedPages::empty() writable? Does it matter?
         let new_rb = ReceiveBuffer {
             mp: core::mem::replace(&mut self.mp, MappedPages::empty()),
             phys_addr: self.phys_addr,

@@ -150,7 +150,7 @@ impl<N: NetworkInterfaceCard + 'static> EthernetDevice<N> {
     /// Create a new instance of the `EthernetDevice`.
     pub fn new(nic_ref: &'static MutexIrqSafe<N>) -> EthernetDevice<N> {
         EthernetDevice {
-            nic_ref: nic_ref,
+            nic_ref,
         }
     }
 }
@@ -194,8 +194,8 @@ impl<'d, N: NetworkInterfaceCard + 'static> smoltcp::phy::Device<'d> for Etherne
 
         let first_buf_len = received_frame.0[0].length;
         let rxbuf_byte_slice = BoxRefMut::new(Box::new(received_frame))
-            .try_map_mut(|rxframe| rxframe.0[0].as_slice_mut::<u8>(0, first_buf_len as usize))
-            .map_err(|e| {
+            .try_map_mut(|rxframe| Ok(rxframe.0[0].as_slice_mut()))
+            .map_err(|e: usize| {
                 error!("EthernetDevice::receive(): couldn't convert receive buffer of length {} into byte slice, error {:?}", first_buf_len, e);
                 e
             })
@@ -248,10 +248,7 @@ impl<N: NetworkInterfaceCard + 'static> smoltcp::phy::TxToken for TxToken<N> {
         })?;
 
         let closure_retval = {
-            let txbuf_byte_slice = txbuf.as_slice_mut::<u8>(0, len).map_err(|e| {
-                error!("EthernetDevice::transmit(): couldn't convert TransmitBuffer of length {} into byte slice, error {:?}", len, e);
-                smoltcp::Error::Exhausted
-            })?;
+            let txbuf_byte_slice = txbuf.as_slice_mut();
             f(txbuf_byte_slice)?
         };
         self.nic_ref.lock()
