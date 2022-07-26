@@ -1,8 +1,9 @@
 use crate::{Device, DeviceWrapper, Error, Result};
 use alloc::collections::BTreeMap;
-use smoltcp::{iface, phy, socket, wire};
+use smoltcp::{iface, phy, wire};
 
 pub use wire::{IpAddress, IpCidr};
+pub use smoltcp::socket;
 
 pub struct Interface<T>
 where

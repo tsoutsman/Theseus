@@ -3,7 +3,7 @@
 extern crate alloc;
 
 use alloc::{boxed::Box, sync::Arc, vec::Vec};
-use smoltcp::wire::{IpAddress, Ipv4Address};
+use smoltcp::wire::Ipv4Address;
 use spin::Mutex;
 
 mod device;
@@ -58,7 +58,7 @@ where
 }
 
 /// Returns a list of available interfaces behind a mutex.
-pub fn interfaces() -> &'static Mutex<Vec<InterfaceRef>> {
+pub fn get_interfaces() -> &'static Mutex<Vec<InterfaceRef>> {
     &NETWORK_INTERFACES
 }
 
