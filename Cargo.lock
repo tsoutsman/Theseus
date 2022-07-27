@@ -3139,6 +3139,17 @@ name = "str_ref"
 version = "0.1.0"
 
 [[package]]
+name = "stub"
+version = "0.1.0"
+
+[[package]]
+name = "stub_print"
+version = "0.1.0"
+dependencies = [
+ "stub",
+]
+
+[[package]]
 name = "swap"
 version = "0.1.0"
 dependencies = [
@@ -3501,6 +3512,7 @@ dependencies = [
  "rq_eval",
  "scheduler_eval",
  "shell",
+ "stub_print",
  "swap",
  "test_backtrace",
  "test_block_io",

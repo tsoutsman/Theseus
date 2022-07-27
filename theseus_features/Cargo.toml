@@ -37,6 +37,7 @@ ps = { path = "../applications/ps", optional = true }
 pwd = { path = "../applications/pwd", optional = true }
 rm = { path = "../applications/rm", optional = true }
 shell = { path = "../applications/shell", optional = true }
+stub_print = { path = "../applications/stub_print", optional = true }
 swap = { path = "../applications/swap", optional = true }
 upd = { path = "../applications/upd", optional = true }
 wasm = { path = "../applications/wasm", optional = true }
@@ -119,6 +120,7 @@ theseus_apps = [
     "pwd",
     "rm",
     "shell",
+    "stub_print",
     "swap",
     "upd",
     "wasm",
