@@ -420,7 +420,7 @@ clean:
 ### All other build files are left intact.
 clean-old-build:
 	@rm -rf $(OBJECT_FILES_BUILD_DIR)
-	@rm -rf $(DEPS_BUILD_DIR)
+##	@rm -rf $(DEPS_BUILD_DIR)
 	@rm -rf $(DEBUG_SYMBOLS_DIR)
 
 

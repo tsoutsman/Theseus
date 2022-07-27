@@ -30,6 +30,8 @@ default-members = [
 
 
 exclude = [
+	"applications/libtheseus_print",
+
 	## Exclude the build directories
 	"build",
 	"target",

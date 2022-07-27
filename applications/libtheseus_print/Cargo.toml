@@ -1,0 +1,7 @@
+[package]
+name = "libtheseus_print"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+libtheseus = { path = "../../libtheseus" }
