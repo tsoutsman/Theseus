@@ -28,7 +28,6 @@ extern crate acpi;
 extern crate volatile;
 extern crate mpmc;
 extern crate owning_ref;
-extern crate rand;
 extern crate hpet;
 extern crate runqueue;
 extern crate network_interface_card;
@@ -40,6 +39,7 @@ extern crate physical_nic;
 extern crate virtual_nic;
 extern crate zerocopy;
 extern crate hashbrown;
+extern crate random;
 
 mod regs;
 mod queue_registers;
@@ -68,11 +68,6 @@ use intel_ethernet::descriptors::{AdvancedRxDescriptor, AdvancedTxDescriptor};
 use nic_buffers::{TransmitBuffer, ReceiveBuffer, ReceivedFrame};
 use nic_queues::{RxQueue, TxQueue};
 use owning_ref::BoxRefMut;
-use rand::{
-    SeedableRng,
-    RngCore,
-    rngs::SmallRng
-};
 use core::mem::ManuallyDrop;
 use hashbrown::HashMap;
 
@@ -948,11 +943,9 @@ impl IxgbeNic {
         // right now we're using the udp port and ipv4 address.
         regs3.mrqc.write(MRQC_MRQE_RSS | MRQC_UDPIPV4 ); 
 
-        //set the random keys for the hash function
-        let seed = get_hpet().as_ref().ok_or("couldn't get HPET timer")?.get_counter();
-        let mut rng = SmallRng::seed_from_u64(seed);
+        // set the random keys for the hash function
         for rssrk in regs3.rssrk.iter_mut() {
-            rssrk.write(rng.next_u32());
+            rssrk.write(random::next_u32());
         }
 
         // Initialize the RSS redirection table

@@ -26,9 +26,8 @@ extern crate irq_safety;
 extern crate wait_queue;
 extern crate task;
 extern crate scheduler;
-
 #[cfg(downtime_eval)]
-extern crate hpet;
+extern crate random;
 
 use core::fmt;
 use alloc::sync::Arc;
@@ -220,16 +219,12 @@ impl <T: Send> Sender<T> {
         #[cfg(trace_channel)]
         trace!("rendezvous: sending msg: {:?}", debugit!(msg));
 
-        #[cfg(downtime_eval)]
-        let value = hpet::get_hpet().as_ref().unwrap().get_counter();
-        // debug!("Value {} {}", value, value % 1024);
-
         let curr_task = task::get_my_current_task().ok_or("couldn't get current task")?;
 
         // Fault mimicing a memory write. Function could panic when getting task
         #[cfg(downtime_eval)]
         {
-            if (value % 4096) == 0  && curr_task.is_restartable() {
+            if (random::next_u32() % 4096) == 0  && curr_task.is_restartable() {
                 // debug!("Fake error {}", value);
                 unsafe { *(0x5050DEADBEEF as *mut usize) = 0x5555_5555_5555; }
             }

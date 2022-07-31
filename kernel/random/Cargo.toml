@@ -1,0 +1,19 @@
+[package]
+name = "random"
+version = "0.1.0"
+authors = ["Klim Tsoutsman <klim@tsoutsman.com>"]
+description = "A crate for generating random numbers"
+edition = "2021"
+
+[dependencies]
+lazy_static = "1.4.0"
+log = "0.4.8"
+spin = "0.9.0"
+
+[dependencies.rand_chacha]
+version = "0.3.0"
+default-features = false
+
+[dependencies.rdrand]
+version = "0.8.2"
+default-features = false

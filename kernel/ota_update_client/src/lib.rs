@@ -14,10 +14,10 @@ extern crate spawn;
 extern crate task;
 extern crate sha3;
 extern crate percent_encoding;
-extern crate rand;
 extern crate http_client;
 extern crate itertools;
 #[macro_use] extern crate smoltcp_helper;
+extern crate random;
 
 
 use core::str;
@@ -35,11 +35,6 @@ use smoltcp::{
 use sha3::{Digest, Sha3_512};
 use percent_encoding::{DEFAULT_ENCODE_SET, utf8_percent_encode};
 use network_manager::{NetworkInterfaceRef};
-use rand::{
-    SeedableRng,
-    RngCore,
-    rngs::SmallRng
-};
 use http_client::{HttpResponse, ConnectedTcpSocket, send_request, check_http_request};
 use smoltcp_helper::{STARTING_FREE_PORT, connect, millis_since, poll_iface};
 
@@ -324,11 +319,11 @@ fn download_files<S: AsRef<str>>(
     }
 
     let startup_time = hpet_ticks!();
-    let mut rng = SmallRng::seed_from_u64(startup_time);
     let rng_upper_bound = u16::max_value() - STARTING_FREE_PORT;
 
     // the below items may be overwritten on each loop iteration, if the socket was closed and we need to create a new one
-    let mut local_port = STARTING_FREE_PORT + (rng.next_u32() as u16 % rng_upper_bound);
+    // TODO: This doesn't provide a uniform distribution of port numbers.
+    let mut local_port = STARTING_FREE_PORT + (random::next_u32() as u16 % rng_upper_bound);
     let mut tcp_rx_buffer = TcpSocketBuffer::new(vec![0; 4096]);
     let mut tcp_tx_buffer = TcpSocketBuffer::new(vec![0; 4096]);
     let mut tcp_socket = TcpSocket::new(tcp_rx_buffer, tcp_tx_buffer);
@@ -378,7 +373,8 @@ fn download_files<S: AsRef<str>>(
             let _packet_io_occurred = poll_iface(&iface, &mut sockets, startup_time)?;
             
             // second, create an entirely new socket and connect it
-            local_port = STARTING_FREE_PORT + (rng.next_u32() as u16 % rng_upper_bound);
+            // TODO: This doesn't provide a uniform distribution of port numbers.
+            local_port = STARTING_FREE_PORT + (random::next_u32() as u16 % rng_upper_bound);
             tcp_rx_buffer = TcpSocketBuffer::new(vec![0; 4096]);
             tcp_tx_buffer = TcpSocketBuffer::new(vec![0; 4096]);
             tcp_socket = TcpSocket::new(tcp_rx_buffer, tcp_tx_buffer);

@@ -46,6 +46,7 @@ extern crate window_manager;
 extern crate multiple_heaps;
 extern crate console;
 #[cfg(simd_personality)] extern crate simd_personality;
+extern crate random;
 
 
 
@@ -82,6 +83,9 @@ pub fn init(
         // enable mirroring of serial port logging outputs to VGA buffer (for real hardware)
         logger::mirror_to_vga(mirror_to_vga_cb);
     }
+    
+    // Requesting a random number initialises the CSPRNG.
+    let _ = random::next_u32();
 
     // calculate TSC period and initialize it
     // not strictly necessary, but more accurate if we do it early on before interrupts, multicore, and multitasking
