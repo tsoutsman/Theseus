@@ -1,0 +1,11 @@
+[package]
+name = "vfs"
+version = "0.1.0"
+authors = ["Klim Tsoutsman <klim@tsoutsman.com>"]
+edition = "2021"
+
+[dependencies]
+memory = { path = "../memory" }
+path = { path = "../path" }
+# TODO: Replace with sleeping mutex
+spin = "0.9.0"
