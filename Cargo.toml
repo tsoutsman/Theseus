@@ -53,6 +53,7 @@ exclude = [
 	## Exclude tlibc and libtheseus, which are currently built separately.
 	"tlibc",
 	"libtheseus",
+	"libtheseus-outer",
 
 	########################################################################################
 	## Below, we exclude things that should NEVER be considered part of Theseus's workspace.
