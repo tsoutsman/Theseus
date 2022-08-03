@@ -781,7 +781,6 @@ dependencies = [
  "console",
  "core2",
  "derive_more",
- "e1000",
  "ethernet_smoltcp_device",
  "event_types",
  "fatfs",
@@ -793,6 +792,7 @@ dependencies = [
  "logger",
  "memory",
  "mlx5",
+ "mod_mgmt",
  "mouse",
  "mpmc",
  "network_manager",
@@ -800,6 +800,7 @@ dependencies = [
  "serial_port",
  "spin 0.9.0",
  "storage_manager",
+ "task",
 ]
 
 [[package]]
@@ -847,6 +848,7 @@ checksum = "9ea835d29036a4087793836fa931b08837ad5e957da9e23886b29586fb9b6650"
 name = "e1000"
 version = "0.1.0"
 dependencies = [
+ "ethernet_smoltcp_device",
  "intel_ethernet",
  "interrupts",
  "irq_safety",
@@ -856,6 +858,7 @@ dependencies = [
  "memory",
  "mpmc",
  "network_interface_card",
+ "network_manager",
  "nic_buffers",
  "nic_initialization",
  "nic_queues",
@@ -2067,7 +2070,6 @@ dependencies = [
 name = "network_manager"
 version = "0.1.0"
 dependencies = [
- "e1000",
  "lazy_static",
  "log",
  "owning_ref",

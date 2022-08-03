@@ -79,6 +79,16 @@ lazy_static! {
 /// TODO: Allow for multiple NICs
 static CONNECTX5_NIC: Once<MutexIrqSafe<ConnectX5Nic>> = Once::new();
 
+pub fn init(device: &PciDevice) -> Result<(), &'static str> {
+    info!("mlx5 PCI device found at: {:?}", device.location);
+    const RX_DESCS: usize = 512;
+    const TX_DESCS: usize = 8192;
+    const MAX_MTU: u16 = 9000;
+
+    ConnectX5Nic::init(device, TX_DESCS, RX_DESCS, MAX_MTU)?;
+    Ok(())
+}
+
 /// Returns a reference to the NIC wrapped in a MutexIrqSafe,
 /// if it exists and has been initialized.
 pub fn get_mlx5_nic() -> Option<&'static MutexIrqSafe<ConnectX5Nic>> {

@@ -268,7 +268,7 @@ impl Drop for LoadedCrate {
 
 impl LoadedCrate {
     /// Returns the `LoadedSection` of type `SectionType::Text` that matches the requested function name, if it exists in this `LoadedCrate`.
-    /// Only matches demangled names, e.g., "my_crate::foo".
+    /// Only matches demangled names, e.g., `my_crate::foo::hc3bfceeea7476bbd`.
     pub fn get_function_section(&self, func_name: &str) -> Option<&StrongSectionRef> {
         self.find_section(|sec| 
             sec.get_type() == SectionType::Text &&

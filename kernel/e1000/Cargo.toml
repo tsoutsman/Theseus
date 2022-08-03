@@ -51,5 +51,11 @@ path = "../nic_queues"
 [dependencies.nic_initialization]
 path = "../nic_initialization"
 
+[dependencies.network_manager]
+path = "../network_manager"
+
+[dependencies.ethernet_smoltcp_device]
+path = "../ethernet_smoltcp_device"
+
 [lib]
 crate-type = ["rlib"]

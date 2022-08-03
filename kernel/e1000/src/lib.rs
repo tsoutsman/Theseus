@@ -21,6 +21,8 @@ extern crate x86_64;
 extern crate mpmc;
 extern crate network_interface_card;
 extern crate intel_ethernet;
+extern crate network_manager;
+extern crate ethernet_smoltcp_device;
 extern crate nic_buffers;
 extern crate nic_queues;
 extern crate nic_initialization;
@@ -60,11 +62,31 @@ const INT_LSC:              u32 = 0x04;
 /// Interrupt type: Receive Timer Interrupt
 const INT_RX:               u32 = 0x80;
 
+/// A randomly chosen IP address that must be outside of the DHCP range.
+/// TODO: use DHCP to acquire an IP address.
+const DEFAULT_LOCAL_IP: &'static str = "10.0.2.15/24"; // the default QEMU user-slirp network gives IP addresses of "10.0.2.*"
+
+/// Standard home router address.
+/// TODO: use DHCP to acquire gateway IP
+const DEFAULT_GATEWAY_IP: [u8; 4] = [10, 0, 2, 2]; // the default QEMU user-slirp networking gateway IP
+
 
 /// The single instance of the E1000 NIC.
 /// TODO: in the future, we should support multiple NICs all stored elsewhere,
 /// e.g., on the PCI bus or somewhere else.
 static E1000_NIC: Once<MutexIrqSafe<E1000Nic>> = Once::new();
+
+pub fn init(dev: &PciDevice) -> Result<(), &'static str> {
+    info!("e1000 PCI device found at: {:?}", dev.location);
+    let e1000_nic_ref = E1000Nic::init(dev)?;
+    let e1000_interface = ethernet_smoltcp_device::EthernetNetworkInterface::new_ipv4_interface(
+        e1000_nic_ref,
+        DEFAULT_LOCAL_IP,
+        &DEFAULT_GATEWAY_IP,
+    )?;
+    network_manager::add_to_network_interfaces(e1000_interface);
+    Ok(())
+}
 
 /// Returns a reference to the E1000Nic wrapped in a MutexIrqSafe,
 /// if it exists and has been initialized.

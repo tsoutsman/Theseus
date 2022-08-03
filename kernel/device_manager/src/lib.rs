@@ -4,7 +4,6 @@
 #[macro_use] extern crate log;
 extern crate spin;
 extern crate event_types;
-extern crate e1000;
 extern crate memory;
 extern crate apic;
 extern crate acpi;
@@ -25,15 +24,18 @@ extern crate io;
 extern crate core2;
 #[macro_use] extern crate derive_more;
 extern crate mlx5;
+extern crate task;
+extern crate mod_mgmt;
 
 use core::convert::TryFrom;
 use mpmc::Queue;
 use event_types::Event;
-use memory::MemoryManagementInfo;
+use memory::{MemoryManagementInfo, get_kernel_mmi_ref};
 use ethernet_smoltcp_device::EthernetNetworkInterface;
 use network_manager::add_to_network_interfaces;
 use alloc::vec::Vec;
 use io::{ByteReaderWriterWrapper, LockableIo, ReaderWriter};
+use pci::PciDevice;
 use serial_port::{SerialPortAddress, take_serial_port_basic};
 use storage_manager::StorageDevice;
 
@@ -45,6 +47,45 @@ const DEFAULT_LOCAL_IP: &'static str = "10.0.2.15/24"; // the default QEMU user-
 /// TODO: use DHCP to acquire gateway IP
 const DEFAULT_GATEWAY_IP: [u8; 4] = [10, 0, 2, 2]; // the default QEMU user-slirp networking gateway IP
 
+const fn driver_symbol(
+    class: u8,
+    subclass: u8,
+    vendor_id: u16,
+    device_id: u16,
+) -> Option<&'static str> {
+    match (class, subclass, vendor_id, device_id) {
+        (0x02, 0x00, 0x8086, 0x100e) => Some("e1000::init::"),
+        // (0x02, 0x00, 0x8086, 0x10fb) => Some("ixgbe::init::"),
+        (0x02, 0x00, 0x15b3, 0x1017 | 0x1019) => Some("mlx5::init::"),
+        _ => None,
+    }
+}
+
+fn load_driver(device: &PciDevice) -> Result<(), &'static str> {
+    let symbol = driver_symbol(
+        device.class,
+        device.subclass,
+        device.vendor_id,
+        device.device_id,
+    )
+    .ok_or("unknown device")?;
+    let (crate_name, _) = symbol.split_once(':').unwrap();
+
+    let namespace = task::get_my_current_task().unwrap().namespace.clone();
+
+    let (object_file, namespace) =
+        mod_mgmt::CrateNamespace::get_crate_object_file_starting_with(&namespace, &crate_name)
+            .ok_or("couldn't find device driver crate")?;
+    let kernel_mmi_ref = get_kernel_mmi_ref().ok_or("couldn't get_kernel_mmi_ref")?;
+    let (krate, _) = namespace.load_crate(&object_file, None, &kernel_mmi_ref, false)?;
+    let locked_crate = krate.lock_as_ref();
+    let section = locked_crate
+        .find_section(|s| s.name.starts_with(symbol))
+        .expect("driver crate didn't contain init symbol");
+    let func = unsafe { section.as_func::<fn(&PciDevice) -> Result<(), &'static str>>()? };
+    func(device)
+}
+ 
 /// Performs early-stage initialization for simple devices needed during early boot.
 ///
 /// This includes:
@@ -128,17 +169,15 @@ pub fn init(key_producer: Queue<Event>, mouse_producer: Queue<Event>) -> Result<
                 continue;
             }
         }
+        
+        if let Err(e) = load_driver(&dev) {
+           error!("error loading driver: {e}"); 
+        }
 
         // If this is a network device, initialize it as such.
         // Look for networking controllers, specifically ethernet cards
         if dev.class == 0x02 && dev.subclass == 0x00 {
-            if dev.vendor_id == e1000::INTEL_VEND && dev.device_id == e1000::E1000_DEV {
-                info!("e1000 PCI device found at: {:?}", dev.location);
-                let e1000_nic_ref = e1000::E1000Nic::init(dev)?;
-                let e1000_interface = EthernetNetworkInterface::new_ipv4_interface(e1000_nic_ref, DEFAULT_LOCAL_IP, &DEFAULT_GATEWAY_IP)?;
-                add_to_network_interfaces(e1000_interface);
-                continue;
-            }
+            // Currently we only dynamically initialise
             if dev.vendor_id == ixgbe::INTEL_VEND && dev.device_id == ixgbe::INTEL_82599 {
                 info!("ixgbe PCI device found at: {:?}", dev.location);
                 
@@ -163,17 +202,6 @@ pub fn init(key_producer: Queue<Event>, mouse_producer: Queue<Event>) -> Result<
                 ixgbe_devs.push(ixgbe_nic);
                 continue;
             }
-            if dev.vendor_id == mlx5::MLX_VEND && (dev.device_id == mlx5::CONNECTX5_DEV || dev.device_id == mlx5::CONNECTX5_EX_DEV) {
-                info!("mlx5 PCI device found at: {:?}", dev.location);
-                const RX_DESCS: usize = 512;
-                const TX_DESCS: usize = 8192;
-                const MAX_MTU:  u16 = 9000;
-
-                mlx5::ConnectX5Nic::init(dev, TX_DESCS, RX_DESCS, MAX_MTU)?;
-                continue;
-            }
-
-            // here: check for and initialize other ethernet cards
         }
 
         warn!("Ignoring PCI device with no handler. {:X?}", dev);
