@@ -6,7 +6,7 @@ version = "0.1.0"
 
 [dependencies]
 log = "0.4.8"
-libc = { version = "0.2", default-features = false }
+libc = { version = "0.2.107", default-features = false }
 
 
 [lib]
