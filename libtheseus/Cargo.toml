@@ -1,13 +1,40 @@
 [package]
 name = "libtheseus"
 version = "0.1.0"
-description = "The application-facing 'library' that exposes Theseus OS features, similar to a standard library."
 authors = ["Kevin Boos <kevinaboos@gmail.com>"]
+description = "The application-facing 'library' that exposes Theseus OS features, similar to a standard library."
+edition = "2021"
 
 [dependencies]
+panic_entry = { path = "../kernel/panic_entry" }
+heap = { path = "../kernel/heap" }
 
-[dependencies.panic_entry]
-path = "../kernel/panic_entry"
+[features]
+default = ["std"]
+std = ["panic_entry/std"]
 
-[dependencies.heap]
-path = "../kernel/heap"
+[patch.crates-io]
+### Patch `spin` to use the `pause` asm instruction in busy-wait loops,
+### because the `core::hint::spin_loop()` only uses it if "sse2" is enabled.
+spin = { git = "https://github.com/theseus-os/spin-rs" }
+### use our own version of volatile which supports zerocopy
+volatile = { git = "https://github.com/theseus-os/volatile" }
+### use our own no_std-compatilbe getopts
+getopts = { git = "https://github.com/theseus-os/getopts" }
+### use the latest version of smoltcp from github; the one on crates.io is out of date
+smoltcp = { git = "https://github.com/m-labs/smoltcp", rev = "0fedb1db9aa26712830822dd61f065deaa34d611" }
+
+### Patch `libc` so we can use libc-specific types when using `cfg(target_os = "theseus")`.
+libc = { path = "ports/libc" }
+### Patch `core2` with newer functions from `std::io`, e.g., additional `Seek` trait functions
+core2 = { path = "libs/core2" }
+### Patch `bincode` because the version on crates.io doesn't handle no_std features correctly.
+bincode = { git = "https://github.com/bincode-org/bincode" }
+
+##############################################################################################
+#################### Below are patches for wasmtime-related crates. ##########################
+##############################################################################################
+wasmparser = { git = "https://github.com/theseus-os/wasm-tools", branch = "no-std-wasmparser" }
+backtrace = { path = "ports/backtrace" }
+region = { path = "ports/region" }
+thiserror_core2 = { path = "libs/thiserror-core2" }

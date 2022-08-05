@@ -25,6 +25,10 @@ path = "../panic_wrapper"
 [dependencies.unwind]
 path = "../unwind"
 
+[features]
+# When building this as a dependency for std, we dont want to define a
+# panic_handler or alloc_error_handler as they're defined in std.
+std = []
 
 [lib]
 crate-type = ["rlib"]

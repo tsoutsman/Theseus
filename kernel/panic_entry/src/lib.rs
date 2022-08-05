@@ -22,7 +22,7 @@ use core::panic::PanicInfo;
 /// The singular entry point for a language-level panic.
 /// 
 /// The Rust compiler will rename this to "rust_begin_unwind".
-#[cfg(not(test))]
+#[cfg(all(not(test), not(feature = "std")))]
 #[panic_handler] // same as:  #[lang = "panic_impl"]
 #[doc(hidden)]
 fn panic_entry_point(info: &PanicInfo) -> ! {
@@ -81,7 +81,7 @@ fn panic_entry_point(info: &PanicInfo) -> ! {
 #[lang = "eh_personality"]
 #[no_mangle]
 #[doc(hidden)]
-extern "C" fn rust_eh_personality() -> ! {
+pub extern "C" fn rust_eh_personality() -> ! {
     error!("BUG: Theseus does not use rust_eh_personality. Why has it been invoked?");
     loop { }
 }
@@ -93,7 +93,7 @@ extern "C" fn rust_eh_personality() -> ! {
 /// that invokes the real `unwind_resume()` function in the `unwind` crate, 
 /// but does so dynamically in loadable mode.
 #[no_mangle]
-extern "C" fn _Unwind_Resume(arg: usize) -> ! {
+pub extern "C" fn _Unwind_Resume(arg: usize) -> ! {
     #[cfg(not(loadable))] {
         unwind::unwind_resume(arg)
     }
@@ -120,9 +120,10 @@ extern "C" fn _Unwind_Resume(arg: usize) -> ! {
 }
 
 /// This is the callback entry point that gets invoked when the heap allocator runs out of memory.
+#[cfg(all(not(test), not(feature = "std")))]
 #[alloc_error_handler]
 #[cfg(not(test))]
-fn oom(_layout: core::alloc::Layout) -> ! {
+pub fn oom(_layout: core::alloc::Layout) -> ! {
     error!("\n(oom) Out of Heap Memory! requested allocation: {:?}", _layout);
     panic!("\n(oom) Out of Heap Memory! requested allocation: {:?}", _layout);
 }
