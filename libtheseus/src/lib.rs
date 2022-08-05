@@ -1,5 +1,7 @@
 #![no_std]
 
+// pub use panic_entry as _;
+
 pub mod mem {
     use core::alloc::{GlobalAlloc, Layout};
     use heap::GLOBAL_ALLOCATOR;

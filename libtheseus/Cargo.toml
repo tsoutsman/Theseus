@@ -7,3 +7,5 @@ edition = "2021"
 
 [dependencies]
 heap = { path = "../kernel/heap" }
+# # defines eh_personality
+# panic_entry = { path = "../kernel/panic_entry" }

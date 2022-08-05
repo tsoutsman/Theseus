@@ -27,7 +27,7 @@ dependencies = [
  "rsdp",
  "rsdt",
  "spin 0.9.0",
- "volatile",
+ "volatile 0.2.7",
 ]
 
 [[package]]
@@ -88,19 +88,20 @@ name = "apic"
 version = "0.1.0"
 dependencies = [
  "atomic_linked_list",
- "bit_field",
+ "bit_field 0.7.0",
  "crossbeam-utils",
  "irq_safety",
  "kernel_config",
  "lazy_static",
  "log",
  "memory",
+ "msr",
  "owning_ref",
  "pit_clock",
  "raw-cpuid",
  "spin 0.9.0",
  "static_assertions",
- "volatile",
+ "volatile 0.2.7",
  "x86_64",
  "zerocopy",
 ]
@@ -121,16 +122,6 @@ dependencies = [
  "stdio",
  "task",
  "window_manager",
- "x86_64",
-]
-
-[[package]]
-name = "arrayvec"
-version = "0.4.12"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cd9fd44efafa8690358b7408d253adf110036b88f55672a933f01d616ad9b1b9"
-dependencies = [
- "nodrop",
 ]
 
 [[package]]
@@ -153,10 +144,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "bincode"
+version = "2.0.0-rc.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f609ceb2c41b0d0277314a789ef0e7eb14593d5485f7c67320bed3924ebb1b33"
+dependencies = [
+ "serde",
+]
+
+[[package]]
 name = "bit_field"
 version = "0.7.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ff91a64014e1bc53bf643920f2c9ab5f0980d92a0948295f3ee550e9266849ad"
+
+[[package]]
+name = "bit_field"
+version = "0.10.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "dcb6dd1c2376d2e096796e234a70e17e94cc2d5d54ff8ce42b28cef1d0d359a4"
 
 [[package]]
 name = "bitfield"
@@ -245,6 +251,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "const_format"
+version = "0.2.26"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "939dc9e2eb9077e0679d2ce32de1ded8531779360b003b4a972a7a39ec263495"
+dependencies = [
+ "const_format_proc_macros",
+]
+
+[[package]]
+name = "const_format_proc_macros"
+version = "0.2.22"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ef196d5d972878a48da7decb7686eded338b4858fbabeed513d63a7c98b2b82d"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "unicode-xid",
+]
+
+[[package]]
 name = "context_switch"
 version = "0.1.0"
 dependencies = [
@@ -322,7 +348,10 @@ dependencies = [
  "hashbrown",
  "log",
  "memory",
+ "qp-trie",
+ "serde",
  "spin 0.9.0",
+ "str_ref",
  "xmas-elf",
 ]
 
@@ -380,6 +409,17 @@ checksum = "7313c0d620d0cb4dbd9d019e461a4beb501071ff46ec0ab933efb4daa76d73e3"
 [[package]]
 name = "debugit"
 version = "0.1.0"
+
+[[package]]
+name = "delegate"
+version = "0.6.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "35c47a31748d9cfa641f6cccb3608385fafe261ba36054f3d40d5a3ca11eb1af"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn",
+]
 
 [[package]]
 name = "derive_more"
@@ -451,6 +491,7 @@ name = "environment"
 version = "0.1.0"
 dependencies = [
  "fs_node",
+ "hashbrown",
  "root",
 ]
 
@@ -468,12 +509,23 @@ name = "exceptions_early"
 version = "0.1.0"
 dependencies = [
  "gdt",
+ "locked_idt",
  "memory",
  "mod_mgmt",
  "spin 0.9.0",
  "tss",
  "vga_buffer",
  "x86_64",
+]
+
+[[package]]
+name = "external_unwind_info"
+version = "0.1.0"
+dependencies = [
+ "lazy_static",
+ "log",
+ "memory",
+ "spin 0.9.0",
 ]
 
 [[package]]
@@ -586,11 +638,11 @@ dependencies = [
 name = "fs_node"
 version = "0.1.0"
 dependencies = [
+ "io",
  "lazy_static",
  "log",
  "memory",
  "spin 0.9.0",
- "x86_64",
 ]
 
 [[package]]
@@ -598,7 +650,7 @@ name = "gdt"
 version = "0.1.0"
 dependencies = [
  "atomic_linked_list",
- "bit_field",
+ "bit_field 0.7.0",
  "bitflags",
  "lazy_static",
  "log",
@@ -621,15 +673,9 @@ dependencies = [
 
 [[package]]
 name = "gimli"
-version = "0.19.0"
+version = "0.25.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "162d18ae5f2e3b90a993d202f1ba17a5633c2484426f8bcae201f86194bacd00"
-dependencies = [
- "arrayvec",
- "byteorder",
- "fallible-iterator",
- "stable_deref_trait 1.2.0",
-]
+checksum = "f0a01e0497841a3b2db4f8afa483cce65f7e96a3498bd6c541734792aeac8fe7"
 
 [[package]]
 name = "goblin"
@@ -648,6 +694,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ab5ef0d4909ef3724cc8cce6ccc8572c5c817592e9285f5464f8e86f8bd3726e"
 dependencies = [
  "ahash",
+ "serde",
 ]
 
 [[package]]
@@ -673,7 +720,7 @@ dependencies = [
  "owning_ref",
  "sdt",
  "spin 0.9.0",
- "volatile",
+ "volatile 0.2.7",
  "zerocopy",
 ]
 
@@ -688,6 +735,7 @@ dependencies = [
  "kernel_config",
  "keyboard",
  "lazy_static",
+ "locked_idt",
  "log",
  "memory",
  "mouse",
@@ -696,6 +744,7 @@ dependencies = [
  "port_io",
  "ps2",
  "scheduler",
+ "sleep",
  "spin 0.9.0",
  "task",
  "tlb_shootdown",
@@ -714,6 +763,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "io"
+version = "0.1.0"
+dependencies = [
+ "core2",
+ "delegate",
+ "lazy_static",
+ "lockable",
+ "log",
+ "spin 0.9.0",
+]
+
+[[package]]
 name = "ioapic"
 version = "0.1.0"
 dependencies = [
@@ -723,7 +784,7 @@ dependencies = [
  "memory",
  "owning_ref",
  "spin 0.9.0",
- "volatile",
+ "volatile 0.2.7",
  "zerocopy",
 ]
 
@@ -738,7 +799,7 @@ dependencies = [
  "owning_ref",
  "spin 0.9.0",
  "static_assertions",
- "volatile",
+ "volatile 0.2.7",
  "zerocopy",
 ]
 
@@ -750,7 +811,7 @@ dependencies = [
  "cortex-m",
  "owning_ref",
  "spin 0.9.0",
- "stable_deref_trait 1.1.1",
+ "stable_deref_trait",
 ]
 
 [[package]]
@@ -829,9 +890,9 @@ dependencies = [
 
 [[package]]
 name = "linked_list_allocator"
-version = "0.8.6"
+version = "0.9.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "84565678e403453d1a27a0886882b3b271701e65146d972d9d7d9a4c4a0ff498"
+checksum = "549ce1740e46b291953c4340adcd74c59bcf4308f4cac050fd33ba91b7168f4a"
 
 [[package]]
 name = "lock_api"
@@ -840,6 +901,22 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5a3c91c24eae6777794bb1997ad98bbb87daf92890acab859f7eaa4320333176"
 dependencies = [
  "scopeguard",
+]
+
+[[package]]
+name = "lockable"
+version = "0.1.0"
+dependencies = [
+ "irq_safety",
+ "spin 0.9.0",
+]
+
+[[package]]
+name = "locked_idt"
+version = "0.1.0"
+dependencies = [
+ "irq_safety",
+ "x86_64",
 ]
 
 [[package]]
@@ -887,11 +964,11 @@ name = "memfs"
 version = "0.1.0"
 dependencies = [
  "fs_node",
+ "io",
  "irq_safety",
  "log",
  "memory",
  "spin 0.9.0",
- "x86_64",
 ]
 
 [[package]]
@@ -908,7 +985,7 @@ name = "memory"
 version = "0.1.0"
 dependencies = [
  "atomic_linked_list",
- "bit_field",
+ "bit_field 0.7.0",
  "bitflags",
  "frame_allocator",
  "irq_safety",
@@ -930,7 +1007,7 @@ dependencies = [
 name = "memory_structs"
 version = "0.1.0"
 dependencies = [
- "bit_field",
+ "bit_field 0.7.0",
  "derive_more",
  "entryflags_x86_64",
  "kernel_config",
@@ -956,7 +1033,9 @@ dependencies = [
 name = "mod_mgmt"
 version = "0.1.0"
 dependencies = [
+ "bincode",
  "bootloader_modules",
+ "const_format",
  "cow_arc",
  "crate_metadata",
  "crate_name_utils",
@@ -973,6 +1052,7 @@ dependencies = [
  "rangemap",
  "root",
  "rustc-demangle",
+ "serde",
  "spin 0.9.0",
  "util",
  "vfs_node",
@@ -1002,10 +1082,14 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "bf78b1242a953be96e01b5f8ed8ffdfc8055c0a2b779899b3835e5d27a69dced"
 
 [[package]]
+name = "msr"
+version = "0.1.0"
+
+[[package]]
 name = "multiboot2"
-version = "0.10.1"
+version = "0.14.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "13e9fc890ff2ef2ded9084c964b950da1bc9e26d480e446ae721607b899db1fd"
+checksum = "e6170b6f12ea75d8d0f5621e3ed780b041a666c4a5b904c77261fe343d0e798d"
 dependencies = [
  "bitflags",
 ]
@@ -1027,7 +1111,7 @@ dependencies = [
  "pit_clock",
  "spin 0.9.0",
  "stack",
- "volatile",
+ "volatile 0.2.7",
  "zerocopy",
 ]
 
@@ -1053,12 +1137,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e4a24736216ec316047a1fc4252e27dabb04218aa4a3f37c6e7ddbf1f9782b54"
 
 [[package]]
-name = "nodrop"
-version = "0.1.14"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "72ef4a56884ca558e5ddb05a1d1e7e1bfd9a68d9ed024c21704cc98872dae1bb"
-
-[[package]]
 name = "num-traits"
 version = "0.2.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1079,7 +1157,7 @@ version = "0.4.1"
 source = "git+https://github.com/theseus-os/owning-ref-rs.git#0d2dcdcffd75b80157d0e72fb82593a8696a9c49"
 dependencies = [
  "spin 0.9.0",
- "stable_deref_trait 1.1.1",
+ "stable_deref_trait",
 ]
 
 [[package]]
@@ -1098,7 +1176,7 @@ dependencies = [
 name = "page_table_entry"
 version = "0.1.0"
 dependencies = [
- "bit_field",
+ "bit_field 0.7.0",
  "kernel_config",
  "memory_structs",
  "zerocopy",
@@ -1147,7 +1225,6 @@ dependencies = [
  "root",
  "spin 0.9.0",
  "vfs_node",
- "x86_64",
 ]
 
 [[package]]
@@ -1168,9 +1245,7 @@ name = "pic"
 version = "0.1.0"
 dependencies = [
  "log",
- "memory",
  "port_io",
- "x86_64",
 ]
 
 [[package]]
@@ -1180,7 +1255,6 @@ dependencies = [
  "log",
  "port_io",
  "spin 0.9.0",
- "x86_64",
 ]
 
 [[package]]
@@ -1205,11 +1279,11 @@ dependencies = [
 
 [[package]]
 name = "proc-macro2"
-version = "1.0.24"
+version = "1.0.43"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1e0704ee1a7e00d7bb417d0770ea303c1bccbabf0ef1667dae92b5967f5f8a71"
+checksum = "0a2ca2c61bc9f3d74d2886294ab7b9853abd9c1ad903a3ac7815c58989bb7bab"
 dependencies = [
- "unicode-xid",
+ "unicode-ident",
 ]
 
 [[package]]
@@ -1223,8 +1297,9 @@ dependencies = [
 
 [[package]]
 name = "qp-trie"
-version = "0.7.3"
-source = "git+https://github.com/theseus-os/qp-trie-rs#847923565622e909795bfc96309bc69ed4aa6689"
+version = "0.8.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a075ecba64154fed5429568c9c6a0e0eccc3276209e93e6133206413ea6834b4"
 dependencies = [
  "new_debug_unreachable",
  "unreachable",
@@ -1264,7 +1339,6 @@ dependencies = [
  "lazy_static",
  "log",
  "spin 0.9.0",
- "x86_64",
 ]
 
 [[package]]
@@ -1290,10 +1364,12 @@ name = "runqueue"
 version = "0.1.0"
 dependencies = [
  "atomic_linked_list",
+ "cfg-if 1.0.0",
  "irq_safety",
  "lazy_static",
  "log",
  "runqueue_priority",
+ "runqueue_realtime",
  "runqueue_round_robin",
  "single_simd_task_optimization",
  "task",
@@ -1308,6 +1384,17 @@ dependencies = [
  "lazy_static",
  "log",
  "single_simd_task_optimization",
+ "task",
+]
+
+[[package]]
+name = "runqueue_realtime"
+version = "0.1.0"
+dependencies = [
+ "atomic_linked_list",
+ "irq_safety",
+ "lazy_static",
+ "log",
  "task",
 ]
 
@@ -1348,14 +1435,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "rustversion"
+version = "1.0.9"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "97477e48b4cf8603ad5f7aaf897467cf42ab4218a38ef76fb14c2d6773a6d6a8"
+
+[[package]]
 name = "scheduler"
 version = "0.1.0"
 dependencies = [
  "apic",
+ "cfg-if 1.0.0",
  "irq_safety",
  "log",
  "runqueue",
  "scheduler_priority",
+ "scheduler_realtime",
  "scheduler_round_robin",
  "spin 0.9.0",
  "task",
@@ -1369,6 +1464,15 @@ dependencies = [
  "runqueue",
  "runqueue_priority",
  "spin 0.9.0",
+ "task",
+]
+
+[[package]]
+name = "scheduler_realtime"
+version = "0.1.0"
+dependencies = [
+ "log",
+ "runqueue_realtime",
  "task",
 ]
 
@@ -1440,6 +1544,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "serde"
+version = "1.0.142"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e590c437916fb6b221e1d00df6e3294f3fccd70ca7e92541c475d6ed6ef5fee2"
+dependencies = [
+ "serde_derive",
+]
+
+[[package]]
+name = "serde_derive"
+version = "1.0.142"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "34b5b8d809babe02f538c2cfec6f2c1ed10804c0e5a6a041a049a4f5588ccc2e"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn",
+]
+
+[[package]]
 name = "serial_port_basic"
 version = "0.1.0"
 dependencies = [
@@ -1458,6 +1582,16 @@ version = "0.1.0"
 dependencies = [
  "cfg-if 0.1.10",
  "log",
+ "task",
+]
+
+[[package]]
+name = "sleep"
+version = "0.1.0"
+dependencies = [
+ "irq_safety",
+ "lazy_static",
+ "scheduler",
  "task",
 ]
 
@@ -1509,12 +1643,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "stable_deref_trait"
-version = "1.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a8f112729512f8e442d81f95a8a7ddf2b7c6b8a1a6f509a95864142b30cab2d3"
-
-[[package]]
 name = "stack"
 version = "0.1.0"
 dependencies = [
@@ -1561,14 +1689,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "str_ref"
+version = "0.1.0"
+
+[[package]]
 name = "syn"
-version = "1.0.64"
+version = "1.0.99"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3fd9d1e9976102a03c542daa2eff1b43f9d72306342f3f8b3ed5fb8908195d6f"
+checksum = "58dbef6ec655055e20b86b15a8cc6d439cca19b667537ac6a1369572d151ab13"
 dependencies = [
  "proc-macro2",
  "quote",
- "unicode-xid",
+ "unicode-ident",
 ]
 
 [[package]]
@@ -1662,7 +1794,6 @@ version = "0.1.0"
 dependencies = [
  "log",
  "pit_clock",
- "x86_64",
 ]
 
 [[package]]
@@ -1685,6 +1816,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "56dee185309b50d1f11bfedef0fe6d036842e3fb77413abef29f8f8d1c5d4c1c"
 
 [[package]]
+name = "unicode-ident"
+version = "1.0.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c4f5b37a154999a8f3f98cc23a628d850e154479cd94decf3414696e12e31aaf"
+
+[[package]]
 name = "unicode-xid"
 version = "0.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1703,15 +1840,13 @@ dependencies = [
 name = "unwind"
 version = "0.1.0"
 dependencies = [
- "apic",
+ "external_unwind_info",
  "fallible-iterator",
  "gimli",
  "interrupts",
  "log",
  "memory",
  "mod_mgmt",
- "runqueue",
- "scheduler",
  "task",
 ]
 
@@ -1739,7 +1874,6 @@ dependencies = [
  "log",
  "memory",
  "spin 0.9.0",
- "x86_64",
 ]
 
 [[package]]
@@ -1749,7 +1883,7 @@ dependencies = [
  "kernel_config",
  "logger",
  "spin 0.9.0",
- "volatile",
+ "volatile 0.2.7",
 ]
 
 [[package]]
@@ -1765,6 +1899,12 @@ source = "git+https://github.com/theseus-os/volatile#73a307a2906c9f67fa4b951ce85
 dependencies = [
  "zerocopy",
 ]
+
+[[package]]
+name = "volatile"
+version = "0.4.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e3ca98349dda8a60ae74e04fd90c7fb4d6a4fbe01e6d3be095478aa0b76f6c0c"
 
 [[package]]
 name = "volatile-register"
@@ -1838,11 +1978,14 @@ dependencies = [
 
 [[package]]
 name = "x86_64"
-version = "0.1.2"
+version = "0.14.10"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "100555a863c0092238c2e0e814c1096c1e5cf066a309c696a87e907b5f8c5d69"
 dependencies = [
- "bit_field",
+ "bit_field 0.10.1",
  "bitflags",
- "irq_safety",
+ "rustversion",
+ "volatile 0.4.5",
 ]
 
 [[package]]
