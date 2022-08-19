@@ -3432,11 +3432,6 @@ dependencies = [
 [[package]]
 name = "test_std"
 version = "0.1.0"
-dependencies = [
- "memory",
- "spawn",
- "stack",
-]
 
 [[package]]
 name = "test_std_fs"
