@@ -65,6 +65,7 @@ use fs_node::{FileRef, WeakFileRef};
 use hashbrown::HashMap;
 use goblin::elf::reloc::*;
 
+pub use goblin::elf::reloc::R_X86_64_64;
 pub use str_ref::StrRef;
 pub use crate_metadata_serde::{
     SectionType,

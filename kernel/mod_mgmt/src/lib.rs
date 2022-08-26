@@ -1,3 +1,4 @@
+#![feature(naked_functions)]
 #![no_std]
 
 #[macro_use] extern crate alloc;
@@ -25,6 +26,7 @@ pub use crate_metadata::*;
 pub mod parse_nano_core;
 pub mod replace_nano_core_crates;
 mod serde;
+mod shim;
 
 /// The name of the directory that contains all of the CrateNamespace files.
 pub const NAMESPACES_DIRECTORY_NAME: &'static str = "namespaces";
@@ -811,7 +813,7 @@ impl CrateNamespace {
         debug!("load_crate_as_application(): trying to load application crate at {:?}", crate_object_file.lock().get_absolute_path());
         // Don't use a backup namespace when loading applications;
         // we must be able to find all symbols in only this namespace and its backing recursive namespaces.
-        let new_crate_ref = namespace.load_crate_internal(crate_object_file, None, kernel_mmi_ref, verbose_log)?;
+        let new_crate_ref = namespace.load_crate_internal(crate_object_file, None, kernel_mmi_ref, false, verbose_log)?;
         {
             let new_crate = new_crate_ref.lock_as_ref();
             let _new_syms = namespace.add_symbols(new_crate.sections.values(), verbose_log);
@@ -841,13 +843,13 @@ impl CrateNamespace {
         &self,
         crate_object_file: &FileRef,
         temp_backup_namespace: Option<&CrateNamespace>, 
-        kernel_mmi_ref: &MmiRef, 
+        kernel_mmi_ref: &MmiRef,
         verbose_log: bool
     ) -> Result<(StrongCrateRef, usize), &'static str> {
 
         #[cfg(not(loscd_eval))]
         debug!("load_crate: trying to load crate at {:?}", crate_object_file.lock().get_absolute_path());
-        let new_crate_ref = self.load_crate_internal(crate_object_file, temp_backup_namespace, kernel_mmi_ref, verbose_log)?;
+        let new_crate_ref = self.load_crate_internal(crate_object_file, temp_backup_namespace, kernel_mmi_ref, false, verbose_log)?;
         
         let (new_crate_name, _num_sections, new_syms) = {
             let new_crate = new_crate_ref.lock_as_ref();
@@ -860,16 +862,26 @@ impl CrateNamespace {
         self.crate_tree.lock().insert(new_crate_name, new_crate_ref.clone_shallow());
         Ok((new_crate_ref, new_syms))
     }
-
-
+    
+    fn load_crate_as_shim(
+        &self,
+        crate_object_file: &FileRef,
+        temp_backup_namespace: Option<&CrateNamespace>,
+        kernel_mmi_ref: &MmiRef,
+        verbose_log: bool,
+    ) -> Result<StrongCrateRef, &'static str> {
+        self.load_crate_internal(crate_object_file, temp_backup_namespace, kernel_mmi_ref, true, verbose_log)
+    }
+    
     /// The internal function that does the work for loading crates,
     /// but does not add the crate nor its symbols to this namespace. 
     /// See [`load_crate`](#method.load_crate) and [`load_crate_as_application`](#fn.load_crate_as_application).
     fn load_crate_internal(&self,
         crate_object_file: &FileRef,
         temp_backup_namespace: Option<&CrateNamespace>, 
-        kernel_mmi_ref: &MmiRef, 
-        verbose_log: bool
+        kernel_mmi_ref: &MmiRef,
+        as_shim: bool,
+        verbose_log: bool,
     ) -> Result<StrongCrateRef, &'static str> {
         let cf = crate_object_file.lock();
         let (new_crate_ref, elf_file) = self.load_crate_sections(cf.deref(), kernel_mmi_ref, verbose_log)?;
@@ -877,7 +889,6 @@ impl CrateNamespace {
         Ok(new_crate_ref)
     }
 
-    
     /// This function first loads all of the given crates' sections and adds them to the symbol map,
     /// and only after *all* crates are loaded does it move on to linking/relocation calculations. 
     /// 
@@ -2094,6 +2105,16 @@ impl CrateNamespace {
                     return Err("Found Rela section that wasn't able to be parsed as Rela64");
                 } 
             };
+            
+            if let Ok(name) = sec.get_name(&elf_file) {
+                if name.starts_with(".rela.text") { // ignore debug special sections for now
+                    let symbol_table = find_symbol_table(&elf_file).unwrap();
+                    drop(new_crate);
+                    self.relocate_text_to_shim(new_crate_ref, rela_array, symbol_table, elf_file)?;
+                    new_crate = new_crate_ref.lock_as_mut().unwrap();
+                    continue;
+                }
+            }
 
             // The target section is where we write the relocation data to.
             // The source section is where we get the data from. 
@@ -2157,7 +2178,7 @@ impl CrateNamespace {
                                     source_sec_name
                                 };
                                 let demangled = demangle(source_sec_name).to_string();
-
+                                
                                 // search for the symbol's demangled name in the kernel's symbol map
                                 self.get_symbol_or_load(&demangled, temp_backup_namespace, kernel_mmi_ref, verbose_log)
                                     .upgrade()

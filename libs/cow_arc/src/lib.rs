@@ -159,7 +159,20 @@ pub struct CowWeak<T> {
     /// This must be a weak reference to the `InnerArc` inside the `CowArc`
     weak: InnerWeak<T>,
 }
+
 impl<T> CowWeak<T> {
+    /// Constructs a new `CowWeak<T>`, without allocating any memory.
+    /// Calling [`upgrade`] on the return value always gives [`None`].
+    ///
+    /// [`upgrade`]: Self::upgrade
+    pub fn new() -> Self {
+        Self {
+            weak: InnerWeak {
+                inner_weak: Weak::new(),
+            }
+        }
+    }
+
     /// Just like `Weak::upgrade()`, attempts to upgrade this `CowWeak`
     /// into a strong reference to the `CowArc` that it points to.
     pub fn upgrade(&self) -> Option<CowArc<T>> {
