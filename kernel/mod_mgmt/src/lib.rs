@@ -1,4 +1,4 @@
-#![feature(naked_functions)]
+#![feature(naked_functions, get_mut_unchecked)]
 #![no_std]
 
 #[macro_use] extern crate alloc;

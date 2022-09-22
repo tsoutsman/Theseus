@@ -2,7 +2,6 @@
 
 use crate::*;
 use core::{arch::global_asm, ffi::CStr};
-use crate_metadata::R_X86_64_64;
 use memory::get_kernel_mmi_ref;
 use xmas_elf::{
     sections::Rela,
@@ -17,90 +16,96 @@ impl CrateNamespace {
         symbol_table: &[Entry64],
         elf_file: &ElfFile,
     ) -> Result<(), &'static str> {
-        log::error!("-------------------------------------------------------------------------------------------");
         let mut new_crate = new_crate_ref.lock_as_mut().unwrap();
 
         let mapped_pages = Arc::new(Mutex::new(MappedPages::empty()));
 
-        let mut shim = Vec::new();
+        let mut text_shim = Vec::new();
+        // Map of shim function names to indexes in relocations vec. We store the index
+        // rather than cloning the Arc because that would prevent us from using
+        // Arc::get_mut.
         let mut shim_sections = HashMap::new();
 
         let relocations = relocations
             .iter()
             .map(|relocation| {
-                let source_entry = &symbol_table[relocation.get_symbol_table_index() as usize];
+                let dependency_entry = &symbol_table[relocation.get_symbol_table_index() as usize];
 
-                let source_index = source_entry.shndx() as usize;
-                let source_name = source_entry.get_name(&elf_file).unwrap();
+                let dependency_index = dependency_entry.shndx() as usize;
+                let dependency_name = dependency_entry.get_name(&elf_file).unwrap();
+                let dependency_value = dependency_entry.value() as usize;
 
-                let start_address = match new_crate.sections.get(&source_index) {
+                let section = match new_crate.sections.get(&dependency_index) {
                     // This is a relocation within the same crate.
-                    Some(ss) => {
-                        log::info!("internal reloc: {}", ss.name);
-                        ss.start_address()
-                    }
+                    Some(ss) => Arc::clone(ss),
                     // This is a relocation to some other crate.
                     None => {
-                        let source_name = demangle(source_name).to_string();
+                        let dependency_name = demangle(dependency_name).to_string();
 
                         // If the symbol is already loaded there's no need to create shims.
-                        if let Some(sec) = self.get_symbol_internal(&source_name) {
-                            log::trace!("external reloc: {}", source_name);
-                            sec.upgrade().unwrap().start_address()
+                        if let Some(sec) = self.get_symbol_internal(&dependency_name) {
+                            sec.upgrade().unwrap()
                         } else {
-                            log::error!("shim reloc: {}", source_name);
-                            if !shim_sections.contains_key(&source_name) {
-                                let sec_shim = generate_function_shim(&source_name);
-                                let sec = Arc::new(LoadedSection {
-                                    name: StrRef::from(source_name.as_ref()),
+                            // If a shim has already been generated for this dependency
+                            if let Some(section) = shim_sections.get(&dependency_name) {
+                                Arc::clone(&section)
+                            } else {
+                                let sec_shim = generate_function_shim(&dependency_name);
+
+                                let section = Arc::new(LoadedSection {
+                                    name: StrRef::from(dependency_name.as_ref()),
                                     typ: SectionType::Text,
                                     global: true,
                                     mapped_pages: Arc::clone(&mapped_pages),
-                                    mapped_pages_offset: shim.len(),
-                                    address_range: VirtualAddress::new_canonical(shim.len())
+                                    mapped_pages_offset: text_shim.len(),
+                                    address_range: VirtualAddress::new_canonical(text_shim.len())
                                         ..VirtualAddress::new_canonical(
-                                            shim.len() + sec_shim.len(),
+                                            text_shim.len() + sec_shim.len(),
                                         ),
                                     parent_crate: CowArc::downgrade(new_crate_ref),
                                     inner: Default::default(),
                                 });
-                                shim.extend(sec_shim);
-                                shim_sections.insert(source_name, sec);
+
+                                text_shim.extend(sec_shim);
+                                shim_sections.insert(dependency_name, Arc::clone(&section));
+
+                                section
                             }
-                            VirtualAddress::zero()
                         }
                     }
                 };
-                (relocation, start_address)
+
+                (relocation, section)
             })
             .collect::<Vec<_>>();
 
-        if shim.len() == 0 {
+        if text_shim.len() == 0 {
             log::info!("{} did not require shims", new_crate.crate_name);
             assert_eq!(shim_sections.len(), 0);
             return Ok(());
         }
 
-        log::error!("NUM SHIMS: {}", shim_sections.len());
-        log::error!("SHIM: {shim_sections:#?}");
-
         let mut mapped_pages =
-            memory::create_mapping(shim.len(), TEXT_SECTION_FLAGS | EntryFlags::WRITABLE)?;
-        // TODO: Create pages with shim rather than cloning into.
-        mapped_pages
-            .as_slice_mut(0, shim.len())?
-            .clone_from_slice(&shim);
+            memory::create_mapping(text_shim.len(), TEXT_SECTION_FLAGS | EntryFlags::WRITABLE)?;
+        mapped_pages.as_slice_mut(0, text_shim.len())?.clone_from_slice(&text_shim);
 
         let start = mapped_pages.start_address();
 
-        // TODO
+        let mapped_pages = Arc::new(Mutex::new(mapped_pages));
+
+        // FIXME
         let mut shndx = 10000;
 
+        // Now that we have allocated mapped pages for the shim, we can fill out the
+        // shim section address ranges and mapped pages.
         for (_, mut sec) in shim_sections.iter_mut() {
             let address_range = (start + sec.address_range.start)..(start + sec.address_range.end);
 
-            let sec_mut = Arc::get_mut(&mut sec).unwrap();
+            // SAFETY: The other Arcs are located in the relocations vec which is not being
+            // accessed.
+            let sec_mut = unsafe { Arc::get_mut_unchecked(&mut sec) };
             sec_mut.address_range = address_range;
+            sec_mut.mapped_pages = Arc::clone(&mapped_pages);
             drop(sec_mut);
 
             new_crate.sections.insert(shndx, Arc::clone(sec));
@@ -109,34 +114,43 @@ impl CrateNamespace {
             shndx += 1;
         }
 
-        for (relocation, start_address) in relocations {
-            let entry = &symbol_table[relocation.get_symbol_table_index() as usize];
-            let start_address = if start_address == VirtualAddress::zero() {
-                let name = entry.get_name(&elf_file).unwrap();
-                let name = demangle(name).to_string();
-                shim_sections.get(&name).unwrap().start_address()
-            } else {
-                start_address
-            };
+        for (relocation, dependency_section) in relocations {
+            let dependency_entry = &symbol_table[relocation.get_symbol_table_index() as usize];
+            let dependency_sec_value = dependency_entry.value() as usize;
 
             write_relocation(
-                RelocationEntry {
-                    typ: R_X86_64_64,
-                    addend: 0,
-                    offset: 0,
-                },
+                RelocationEntry::from_elf_relocation(relocation),
                 todo!(),
-                0,
-                start_address + entry.value() as usize,
+                todo!(),
+                dependency_section.start_address() + dependency_sec_value,
                 false,
             )?;
-
-            // let source_index = source_entry.shndx() as usize;
-
-            // if new_crate.sections.get(&source_index).is_none() {
-            //     // TODO
-            // }
         }
+
+        // for (relocation, section, address) in relocations {
+        //     let entry = &symbol_table[relocation.get_symbol_table_index() as usize];
+        //     let dependency_address = if address == VirtualAddress::zero() {
+        //         let name = entry.get_name(&elf_file).unwrap();
+        //         let name = demangle(name).to_string();
+        //         shim_sections.get(&name).unwrap().start_address()
+        //     } else {
+        //         address
+        //     };
+
+        //     write_relocation(
+        //         RelocationEntry::from_elf_relocation(relocation),
+        //         &mut section.mapped_pages.lock(),
+        //         section.mapped_pages_offset,
+        //         dependency_address,
+        //         false,
+        //     )?;
+
+        //     // let source_index = source_entry.shndx() as usize;
+
+        //     // if new_crate.sections.get(&source_index).is_none() {
+        //     //     // TODO
+        //     // }
+        // }
 
         Ok(())
     }
@@ -176,7 +190,9 @@ pub unsafe extern "C" fn __rewrite_shim_relocations_rust(
     call_instruction_in_shim: usize,
     shim_caller: usize,
 ) -> usize {
-    log::error!("---------------------------------------------- __rewrite_shim_relocations_rust ----------------------------------------------");
+    log::error!(
+        "---------------------------------------------- __rewrite_shim_relocations_rust ----------------------------------------------"
+    );
     log::error!("call instruction in shim: {call_instruction_in_shim}");
     log::error!("shim caller: {shim_caller}");
 
