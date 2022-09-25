@@ -36,6 +36,8 @@ use stdio::{
 };
 use task::{ExitValue, JoinableTaskRef, KillReason};
 
+mod history;
+
 /// The status of a job.
 #[derive(PartialEq)]
 enum JobStatus {
