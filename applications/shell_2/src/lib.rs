@@ -36,7 +36,11 @@ use stdio::{
 };
 use task::{ExitValue, JoinableTaskRef, KillReason};
 
+mod error;
 mod history;
+mod job;
+
+// pub use error::{Error, Result};
 
 /// The status of a job.
 #[derive(PartialEq)]

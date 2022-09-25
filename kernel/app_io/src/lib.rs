@@ -41,16 +41,16 @@ use libterm::Terminal;
 /// full control to queues.
 pub struct IoStreams {
     /// The reader to stdin.
-    stdin: StdioReader,
+    pub stdin: StdioReader,
     /// The writer to stdout.
-    stdout: StdioWriter,
+    pub stdout: StdioWriter,
     /// The writer to stderr.
-    stderr: StdioWriter,
+    pub stderr: StdioWriter,
     /// The reader to key event queue. This is the same reader as that in
     /// shell. Apps can take this reader to directly access keyboard events.
-    key_event_reader: Arc<Mutex<Option<KeyEventQueueReader>>>,
+    pub key_event_reader: Arc<Mutex<Option<KeyEventQueueReader>>>,
     /// Points to the terminal.
-    terminal: Arc<Mutex<Terminal>>
+    pub terminal: Arc<Mutex<Terminal>>
 }
 
 /// Applications set the flags in this structure to inform the parent shell to
