@@ -132,6 +132,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "app_io_2"
+version = "0.1.0"
+dependencies = [
+ "core2",
+ "keycodes_ascii",
+ "mutex_sleep",
+]
+
+[[package]]
 name = "arrayvec"
 version = "0.5.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
