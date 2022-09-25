@@ -11,6 +11,7 @@
 extern crate alloc;
 
 use alloc::{
+    borrow::ToOwned,
     collections::BTreeMap,
     format,
     string::{String, ToString},
@@ -391,15 +392,13 @@ impl Shell {
         if self.history_index == 0 {
             return Ok(());
         }
-        if self.history_index == 1 {
-            if self.buffered_cmd_recorded {
-                let selected_command = self.command_history.pop()
+        if self.history_index == 1 && self.buffered_cmd_recorded {
+            let selected_command = self.command_history.pop()
                     .ok_or("BUG: shell::goto_next_command(): empty command line history when history_index was 1")?;
-                self.set_cmdline(selected_command, true)?;
-                self.history_index -= 1;
-                self.buffered_cmd_recorded = false;
-                return Ok(());
-            }
+            self.set_cmdline(selected_command, true)?;
+            self.history_index -= 1;
+            self.buffered_cmd_recorded = false;
+            return Ok(());
         }
         self.history_index -= 1;
         if self.history_index == 0 {
@@ -443,7 +442,7 @@ impl Shell {
                         }
                         match task_ref.kill(KillReason::Requested) {
                             Ok(_) => {
-                                if let Err(e) = runqueue::remove_task_from_all(&task_ref) {
+                                if let Err(e) = runqueue::remove_task_from_all(task_ref) {
                                     error!(
                                         "Killed task but could not remove it from runqueue: {}",
                                         e
@@ -557,7 +556,7 @@ impl Shell {
             && keyevent.keycode.to_ascii(keyevent.modifiers).is_some()
         {
             let cmdline = self.cmdline.clone();
-            if cmdline.len() == 0 && self.fg_job_num.is_none() {
+            if cmdline.is_empty() && self.fg_job_num.is_none() {
                 // reprints the prompt on the next line if the user presses enter and hasn't
                 // typed anything into the prompt
                 self.terminal.lock().print_to_terminal("\n".to_string());
@@ -565,18 +564,15 @@ impl Shell {
                 return Ok(());
             } else if let Some(ref fg_job_num) = self.fg_job_num {
                 // send buffered characters to the running application
-                match self.jobs.get(fg_job_num) {
-                    Some(job) => {
-                        self.terminal.lock().print_to_terminal("\n".to_string());
-                        let mut buffered_string = String::new();
-                        mem::swap(&mut buffered_string, &mut self.input_buffer);
-                        buffered_string.push('\n');
-                        job.stdin_writer
-                            .lock()
-                            .write_all(buffered_string.as_bytes())
-                            .or(Err("shell failed to write to stdin"))?;
-                    }
-                    _ => {}
+                if let Some(job) = self.jobs.get(fg_job_num) {
+                    self.terminal.lock().print_to_terminal("\n".to_string());
+                    let mut buffered_string = String::new();
+                    mem::swap(&mut buffered_string, &mut self.input_buffer);
+                    buffered_string.push('\n');
+                    job.stdin_writer
+                        .lock()
+                        .write_all(buffered_string.as_bytes())
+                        .or(Err("shell failed to write to stdin"))?;
                 }
                 return Ok(());
             } else {
@@ -737,7 +733,7 @@ impl Shell {
 
         // Gets the task id so we can reference this task if we need to kill it with
         // Ctrl+C
-        return Ok(taskref);
+        Ok(taskref)
     }
 
     /// Evaluate the command line. It creates a sequence of jobs, which forms a
@@ -862,7 +858,7 @@ impl Shell {
                 let err_msg = match err {
                     AppErr::NotFound(command) => format!("{:?} command not found.\n", command),
                     AppErr::NamespaceErr => {
-                        format!("Failed to find directory of application executables.\n")
+                        "Failed to find directory of application executables.\n".to_owned()
                     }
                     AppErr::SpawnErr(e) => {
                         format!("Failed to spawn new task to run command. Error: {}.\n", e)
@@ -896,10 +892,7 @@ impl Shell {
 
     /// Try to match the incomplete command against all applications in the same
     /// namespace. Returns a vector that contains all matching results.
-    fn find_app_name_match(
-        &mut self,
-        incomplete_cmd: &String,
-    ) -> Result<Vec<String>, &'static str> {
+    fn find_app_name_match(&mut self, incomplete_cmd: &str) -> Result<Vec<String>, &'static str> {
         let namespace_dir = match task::get_my_current_task()
             .map(|t| t.get_namespace().dir().clone())
             .ok_or(AppErr::NamespaceErr)
@@ -909,7 +902,7 @@ impl Shell {
                 return Err("Failed to get namespace_dir while completing cmdline.");
             }
         };
-        let mut names = namespace_dir.get_file_and_dir_names_starting_with(&incomplete_cmd);
+        let mut names = namespace_dir.get_file_and_dir_names_starting_with(incomplete_cmd);
 
         // Drop the extension name and hash value.
         let mut clean_name = String::new();
@@ -931,10 +924,7 @@ impl Shell {
     /// to walk the directory of `foo/bar`. If it succeeds, it then lists
     /// all filenames under `foo/bar` and tries to match `examp` against
     /// those filenames. It returns a vector that contains all matching results.
-    fn find_file_path_match(
-        &mut self,
-        incomplete_cmd: &String,
-    ) -> Result<Vec<String>, &'static str> {
+    fn find_file_path_match(&mut self, incomplete_cmd: &str) -> Result<Vec<String>, &'static str> {
         // Stores all possible matches.
         let mut match_list = Vec::new();
 
@@ -947,13 +937,10 @@ impl Shell {
         let mut curr_wd = Arc::clone(&taskref.get_env().lock().working_dir);
 
         // Check if the last character is a slash.
-        let slash_ending = match incomplete_cmd.chars().last() {
-            Some('/') => true,
-            _ => false,
-        };
+        let slash_ending = matches!(incomplete_cmd.chars().last(), Some('/'));
 
         // Split the path by slash and filter out consecutive slashes.
-        let mut nodes: Vec<_> = incomplete_cmd.split('/').filter(|node| node.len() > 0).collect();
+        let mut nodes: Vec<_> = incomplete_cmd.split('/').filter(|node| !node.is_empty()).collect();
 
         // Get the last node in the path, which is to be completed.
         let incomplete_node = {
@@ -986,9 +973,9 @@ impl Shell {
         child_list.reverse();
         for child in child_list.iter() {
             if child.starts_with(&incomplete_node) {
-                if let Some(_) = locked_working_dir.get_file(&child) {
+                if locked_working_dir.get_file(child).is_some() {
                     match_list.push(child.clone());
-                } else if let Some(_) = locked_working_dir.get_dir(&child) {
+                } else if locked_working_dir.get_dir(child).is_some() {
                     let mut cloned = child.clone();
                     cloned.push('/');
                     match_list.push(cloned);
@@ -1299,11 +1286,8 @@ impl Shell {
 
         // Support for legacy output by `terminal_print`.
         if let Some(print_event) = self.print_consumer.peek() {
-            match print_event.deref() {
-                &Event::OutputEvent(ref s) => {
-                    self.terminal.lock().print_to_terminal(s.clone());
-                }
-                _ => {}
+            if let &Event::OutputEvent(ref s) = print_event.deref() {
+                self.terminal.lock().print_to_terminal(s.clone());
             }
             print_event.mark_completed();
             // Goes to the next iteration of the loop after processing print event to ensure
@@ -1532,7 +1516,7 @@ impl Shell {
             self.terminal.lock().print_to_terminal("Usage: bg %job_num\n".to_string());
             return Ok(());
         }
-        if let Some('%') = args[0].chars().nth(0) {
+        if let Some('%') = args[0].chars().next() {
             let job_num = args[0].chars().skip(1).collect::<String>();
             if let Ok(job_num) = job_num.parse::<isize>() {
                 if let Some(job) = self.jobs.get_mut(&job_num) {
@@ -1567,7 +1551,7 @@ impl Shell {
             self.terminal.lock().print_to_terminal("Usage: fg %job_num\n".to_string());
             return Ok(());
         }
-        if let Some('%') = args[0].chars().nth(0) {
+        if let Some('%') = args[0].chars().next() {
             let job_num = args[0].chars().skip(1).collect::<String>();
             if let Ok(job_num) = job_num.parse::<isize>() {
                 if let Some(job) = self.jobs.get_mut(&job_num) {
