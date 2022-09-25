@@ -7,22 +7,6 @@ pub fn new() -> (Writer, Reader) {
     (Writer { inner: handle.clone() }, Reader { inner: handle })
 }
 
-pub fn dummy() -> (Writer, Reader) {
-    (
-        // TODO: Writing to this writer will still unnecessarily write to inner.bytes.
-        Writer {
-            inner: Handle {
-                inner: Arc::new(Mutex::new(State { bytes: VecDeque::new(), eof: false })),
-            },
-        },
-        Reader {
-            inner: Handle {
-                inner: Arc::new(Mutex::new(State { bytes: VecDeque::new(), eof: true })),
-            },
-        },
-    )
-}
-
 #[derive(Clone, Default)]
 struct Handle {
     inner: Arc<Mutex<State>>,
@@ -34,11 +18,20 @@ struct State {
     eof: bool,
 }
 
+#[derive(Clone, Default)]
 pub struct Reader {
     inner: Handle,
 }
 
 impl Reader {
+    pub fn dummy() -> Self {
+        Self {
+            inner: Handle {
+                inner: Arc::new(Mutex::new(State { bytes: VecDeque::new(), eof: true })),
+            },
+        }
+    }
+
     pub fn lock(&self) -> ReadGuard {
         ReadGuard { inner: self.inner.inner.lock().unwrap() }
     }
@@ -69,11 +62,21 @@ impl Read for ReadGuard<'_> {
     }
 }
 
+#[derive(Clone, Default)]
 pub struct Writer {
     inner: Handle,
 }
 
 impl Writer {
+    pub fn dummy() -> Self {
+        // TODO: Writing to this writer will still unnecessarily write to inner.bytes.
+        Self {
+            inner: Handle {
+                inner: Arc::new(Mutex::new(State { bytes: VecDeque::new(), eof: false })),
+            },
+        }
+    }
+
     pub fn lock(&self) -> WriteGuard {
         WriteGuard { inner: self.inner.inner.lock().unwrap() }
     }
