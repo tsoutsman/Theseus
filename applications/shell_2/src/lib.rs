@@ -7,38 +7,19 @@
 //! records the history of executed user commands.
 
 #![no_std]
-extern crate app_io;
-extern crate core2;
-extern crate dfqueue;
-extern crate environment;
-extern crate event_types;
-extern crate fs_node;
-extern crate keycodes_ascii;
-extern crate libterm;
-extern crate path;
-extern crate print;
-extern crate root;
-extern crate runqueue;
-extern crate scheduler;
-extern crate spawn;
-extern crate spin;
-extern crate stdio;
-extern crate task;
-extern crate terminal_print;
-extern crate window_manager;
 
-#[macro_use]
 extern crate alloc;
-#[macro_use]
-extern crate log;
 
-use alloc::collections::BTreeMap;
-use alloc::string::{String, ToString};
-use alloc::sync::Arc;
-use alloc::vec::Vec;
+use alloc::{
+    collections::BTreeMap,
+    format,
+    string::{String, ToString},
+    sync::Arc,
+    vec,
+    vec::Vec,
+};
 use app_io::IoStreams;
-use core::mem;
-use core::ops::Deref;
+use core::{mem, ops::Deref};
 use core2::io::Write;
 use dfqueue::{DFQueue, DFQueueConsumer, DFQueueProducer};
 use environment::Environment;
@@ -46,6 +27,7 @@ use event_types::Event;
 use fs_node::FileOrDir;
 use keycodes_ascii::{KeyAction, KeyEvent, Keycode};
 use libterm::Terminal;
+use log::{error, info, trace, warn};
 use path::Path;
 use spin::Mutex;
 use stdio::{
