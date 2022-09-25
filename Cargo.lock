@@ -2896,6 +2896,33 @@ dependencies = [
 ]
 
 [[package]]
+name = "shell_2"
+version = "0.1.0"
+dependencies = [
+ "app_io",
+ "core2",
+ "dfqueue",
+ "environment",
+ "event_types",
+ "fs_node",
+ "keycodes_ascii",
+ "lazy_static",
+ "libterm",
+ "log",
+ "path",
+ "print",
+ "root",
+ "runqueue",
+ "scheduler",
+ "spawn",
+ "spin 0.9.0",
+ "stdio",
+ "task",
+ "terminal_print",
+ "window_manager",
+]
+
+[[package]]
 name = "signal_handler"
 version = "0.1.0"
 dependencies = [
