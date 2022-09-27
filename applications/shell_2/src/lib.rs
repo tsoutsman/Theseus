@@ -40,6 +40,7 @@ mod error;
 mod event;
 mod frontend;
 mod history;
+mod internal;
 mod job;
 mod lib_2;
 

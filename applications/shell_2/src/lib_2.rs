@@ -3,7 +3,7 @@ extern crate alloc;
 use crate::{
     frontend::{Cursor, Frontend},
     history,
-    job::{Job, Status},
+    job::Job,
 };
 
 use crate::error::{Error, Result};
@@ -23,13 +23,13 @@ pub struct Shell<T>
 where
     T: crate::frontend::Frontend,
 {
-    jobs: HashMap<usize, Job>,
-    key_event_producer: KeyEventQueueWriter,
-    key_event_consumer: Arc<Mutex<Option<KeyEventQueueReader>>>,
-    foreground_job: Option<usize>,
-    history: history::History,
-    input_buf: String,
-    frontend: T,
+    pub(crate) frontend: T,
+    pub(crate) input_buf: String,
+    pub(crate) jobs: HashMap<usize, Job>,
+    pub(crate) key_event_producer: KeyEventQueueWriter,
+    pub(crate) key_event_consumer: Arc<Mutex<Option<KeyEventQueueReader>>>,
+    pub(crate) foreground_job: Option<usize>,
+    pub(crate) history: history::History,
 }
 
 impl<T> Shell<T>
@@ -52,7 +52,7 @@ where
         }
     }
 
-    fn set_input(&mut self, string: String) {
+    pub(crate) fn set_input(&mut self, string: String) {
         if !self.input_buf.is_empty() {
             self.clear_input();
         }
@@ -61,7 +61,7 @@ where
         self.frontend.cursor_mut().set_offset(0);
     }
 
-    fn clear_input(&mut self) {
+    pub(crate) fn clear_input(&mut self) {
         for _ in 0..self.input_buf.len() {
             self.frontend.remove_char(1);
         }
@@ -69,16 +69,16 @@ where
         self.frontend.cursor_mut().set_offset(0);
     }
 
-    fn push_to_input(&mut self, c: char) {
+    pub(crate) fn push_to_input(&mut self, c: char) {
         self.input_buf.push(c);
         self.frontend.insert_char(c, 0);
     }
 
-    fn pop_from_input(&mut self) -> Option<char> {
+    pub(crate) fn pop_from_input(&mut self) -> Option<char> {
         todo!();
     }
 
-    fn display_prompt(&mut self) {
+    pub(crate) fn display_prompt(&mut self) {
         let env = task::get_my_current_task().unwrap().get_env();
         let prompt = format!("{}: ", env.lock().working_dir.lock().get_absolute_path());
         self.frontend.print(&prompt);
@@ -349,112 +349,5 @@ where
             //     scheduler::schedule();
             // }
         }
-    }
-}
-
-/// Internal commands.
-impl<T> Shell<T>
-where
-    T: Frontend,
-{
-    fn try_execute_internal(&mut self) -> bool {
-        if let Some(cmd) = self.input_buf.split_whitespace().next() {
-            match cmd {
-                "jobs" => self.execute_internal_jobs(),
-                "fg" => self.execute_internal_fg(),
-                "bg" => self.execute_internal_bg(),
-                "clear" => self.execute_internal_clear(),
-                _ => return false,
-            };
-            true
-        } else {
-            error!("called try_execute_internal without a command");
-            false
-        }
-    }
-
-    fn execute_internal_jobs(&mut self) {
-        if self.jobs.is_empty() {
-            self.frontend.print("No running or stopped jobs.\n");
-        } else {
-            for (num, rref) in self.jobs.iter() {
-                let status = match rref.status {
-                    Status::Running => "running",
-                    Status::Stopped => "stopped",
-                };
-
-                self.frontend.print(&format!("[{}] [{}] {}\n", num, status, rref.cmd));
-            }
-        }
-
-        self.clear_input();
-        self.display_prompt();
-    }
-
-    fn execute_internal_fg(&mut self) {
-        let mut iter = self.input_buf.split_whitespace();
-        iter.next();
-
-        if let Some(arg) = iter.next() {
-            if iter.next().is_none() {
-                let mut chars = arg.chars();
-                if let Some('%') = chars.next() {
-                    let num_str = chars.collect::<String>();
-                    if let Ok(num) = num_str.parse::<usize>() {
-                        if let Some(job) = self.jobs.get_mut(&num) {
-                            self.foreground_job = Some(num);
-                            for task in job.tasks.iter() {
-                                if !task.rref.has_exited() {
-                                    task.rref.unblock();
-                                }
-                                job.status = Status::Running;
-                            }
-                        } else {
-                            self.frontend.print(&format!("No job with number {num} found!\n"));
-                        }
-                        return;
-                    }
-                }
-            }
-        }
-
-        self.frontend.print("Usage: fg %job_num\n");
-    }
-
-    fn execute_internal_bg(&mut self) {
-        let mut iter = self.input_buf.split_whitespace();
-        iter.next();
-
-        if let Some(arg) = iter.next() {
-            if iter.next().is_none() {
-                let mut chars = arg.chars();
-                if let Some('%') = chars.next() {
-                    let num_str = chars.collect::<String>();
-                    if let Ok(num) = num_str.parse::<usize>() {
-                        if let Some(job) = self.jobs.get_mut(&num) {
-                            self.foreground_job = Some(num);
-                            for task in job.tasks.iter() {
-                                if !task.rref.has_exited() {
-                                    task.rref.unblock();
-                                }
-                                job.status = Status::Running;
-                            }
-                            self.clear_input();
-                            self.display_prompt();
-                        } else {
-                            self.frontend.print(&format!("No job with number {num} found!\n"));
-                        }
-                        return;
-                    }
-                }
-            }
-        }
-
-        self.frontend.print("Usage: bg %job_num\n");
-    }
-
-    fn execute_internal_clear(&mut self) {
-        self.frontend.clear();
-        self.display_prompt();
     }
 }
