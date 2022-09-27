@@ -1,4 +1,4 @@
-use crate::{frontend::Frontend, job::Status, lib_2::Shell};
+use crate::{frontend::Frontend, job::Status, Shell};
 use alloc::{format, string::String};
 use log::error;
 
