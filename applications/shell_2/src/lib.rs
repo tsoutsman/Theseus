@@ -36,9 +36,12 @@ use stdio::{
 };
 use task::{ExitValue, JoinableTaskRef, KillReason};
 
+mod backend;
 mod error;
+mod event;
 mod history;
 mod job;
+mod lib_2;
 
 // pub use error::{Error, Result};
 

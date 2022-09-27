@@ -7,21 +7,21 @@ use task::JoinableTaskRef;
 
 /// A succesfuly evaluated command.
 pub(crate) struct Job {
-    tasks: Vec<Task>,
-    status: Status,
-    cmd: String,
-    stdin: StdioWriter,
-    stdout: StdioReader,
+    pub(crate) tasks: Vec<Task>,
+    pub(crate) status: Status,
+    pub(crate) cmd: String,
+    pub(crate) stdin: StdioWriter,
+    pub(crate) stdout: StdioReader,
 }
 
 pub(crate) struct Task {
-    rref: JoinableTaskRef,
-    id: usize,
+    pub(crate) rref: JoinableTaskRef,
+    pub(crate) id: usize,
 }
 
 /// The status of a job.
 #[derive(PartialEq)]
-enum Status {
+pub(crate) enum Status {
     /// Normal state. All the tasks in this job are either running or exited.
     Running,
     /// The job is suspended (but not killed), e.g. upon ctrl-Z.
