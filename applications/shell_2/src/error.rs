@@ -7,5 +7,6 @@ pub enum Error {
     NamespaceNotFound,
     AppNotFound(String),
     MultipleAppsFound,
+    Io,
     SpawnFailed(&'static str),
 }

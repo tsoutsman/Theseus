@@ -1,4 +1,4 @@
-use alloc::{string::String, vec::Vec};
+use alloc::{borrow::ToOwned, string::String, vec::Vec};
 
 #[derive(Clone, Debug, Default)]
 pub(crate) struct History {
@@ -14,6 +14,7 @@ pub(crate) struct History {
     ///    index:   last   past(3) past(2) past(1) past(0) current
     /// ```
     index: Index,
+    current: String,
 }
 
 impl History {
@@ -22,12 +23,16 @@ impl History {
     }
 
     pub(crate) fn reset(&mut self) {
+        self.commands.dedup();
         self.index = Index::Current;
+        // We don't need to clear self.current as it will be overwritten on the
+        // next call of self.previous.
     }
 
-    pub(crate) fn previous(&mut self) -> Option<&str> {
+    pub(crate) fn previous(&mut self, current: &str) -> Option<&str> {
         match self.index {
             Index::Current => {
+                self.current = current.to_owned();
                 if self.commands.is_empty() {
                     self.index = Index::Last;
                     None
@@ -61,7 +66,7 @@ impl History {
             Index::Past(mut idx) => {
                 if idx == 0 {
                     self.index = Index::Current;
-                    None
+                    Some(&self.current)
                 } else {
                     idx -= 1;
                     self.index = Index::Past(idx);
@@ -84,12 +89,8 @@ impl History {
     }
 
     pub(crate) fn push(&mut self, command: String) {
-        self.index = Index::Current;
+        self.reset();
         self.commands.push(command);
-    }
-
-    pub(crate) fn dedup(&mut self) {
-        self.commands.dedup()
     }
 }
 

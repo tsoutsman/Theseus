@@ -1,10 +1,15 @@
-pub trait Backend {
+pub trait Frontend {
+    type Cursor: Cursor;
+
     fn insert_char(&mut self, c: char, offset_from_end: usize);
     fn remove_char(&mut self, offset_from_end: usize);
 
-    fn print_to_terminal(&mut self, string: &str);
+    fn print(&mut self, string: &str);
+    
+    fn clear(&mut self);
 
-    fn cursor(&mut self) -> &mut Cursor;
+    fn cursor(&self) -> &Self::Cursor;
+    fn cursor_mut(&mut self) -> &mut Self::Cursor;
 
     fn resize(&mut self, size: Rectangle);
     
@@ -20,6 +25,13 @@ pub trait Backend {
     fn refresh(&mut self);
 }
 
-pub struct Cursor;
+pub trait Cursor {
+    fn enable(&mut self);
+    fn disable(&mut self);
+
+    fn offset(&self) -> usize;
+
+    fn set_offset(&mut self, offset: usize);
+}
 
 pub struct Rectangle;
