@@ -14,11 +14,8 @@ derive_more = "0.99.0"
 [dependencies.log]
 version = "0.4.8"
 
-[dependencies.event_types]
-path = "../event_types"
-
 [dependencies.util]
-path = "../../libs/util"
+path = "../util"
 
 [lib]
 crate-type = ["rlib"]
