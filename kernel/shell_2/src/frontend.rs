@@ -1,5 +1,6 @@
 pub trait Frontend {
     type Cursor: Cursor;
+    type Input: Input;
 
     fn insert_char(&mut self, c: char, offset_from_end: usize);
     fn remove_char(&mut self, offset_from_end: usize);
@@ -11,7 +12,7 @@ pub trait Frontend {
     fn cursor(&self) -> &Self::Cursor;
     fn cursor_mut(&mut self) -> &mut Self::Cursor;
 
-    fn resize(&mut self, size: Rectangle);
+    fn resize(&mut self, size: crate::Rectangle);
     
     fn to_begin(&mut self);
     fn to_end(&mut self);
@@ -23,6 +24,10 @@ pub trait Frontend {
     fn page_down(&mut self);
     
     fn refresh(&mut self);
+}
+
+pub trait Input {
+    fn event(&mut self) -> Option<crate::Event>;
 }
 
 pub trait Cursor {

@@ -20,7 +20,7 @@ path = "../serial_port"
 path = "../io"
 
 [dependencies.text_terminal]
-path = "../text_terminal"
+path = "../../libs/text_terminal"
 
 [dependencies.task]
 path = "../task"

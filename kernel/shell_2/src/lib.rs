@@ -3,16 +3,18 @@
 extern crate alloc;
 
 mod error;
+mod event;
 mod frontend;
 mod history;
 mod internal;
 mod job;
 
 pub use error::{Error, Result};
+pub use event::{Event, KeyboardEvent};
+pub use frontend::{Cursor, Frontend, Input, Rectangle};
 
 use alloc::{borrow::ToOwned, format, string::String, sync::Arc};
 use core2::io::Write;
-use frontend::{Cursor, Frontend};
 use hashbrown::HashMap;
 use job::Job;
 use keycodes_ascii::{KeyAction, KeyEvent, Keycode};
@@ -227,12 +229,7 @@ where
                 Ok(())
             }
             Keycode::Enter => {
-                // TODO: What does this if statement mean?
-                if key_event.keycode.to_ascii(key_event.modifiers).is_some() {
-                    todo!();
-                } else {
-                    todo!();
-                }
+                todo!();
             }
             Keycode::Home => {
                 self.frontend.cursor_mut().set_offset(self.input_buf.len());
