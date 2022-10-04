@@ -29,7 +29,7 @@ where
 
     fn execute_internal_jobs(&mut self) {
         if self.jobs.is_empty() {
-            self.frontend.print("No running or stopped jobs.\n");
+            self.frontend.push_str("No running or stopped jobs.\n");
         } else {
             for (num, rref) in self.jobs.iter() {
                 let status = match rref.status {
@@ -37,7 +37,7 @@ where
                     Status::Stopped => "stopped",
                 };
 
-                self.frontend.print(&format!("[{}] [{}] {}\n", num, status, rref.cmd));
+                self.frontend.push_str(&format!("[{}] [{}] {}\n", num, status, rref.cmd));
             }
         }
 
@@ -47,7 +47,7 @@ where
 
     fn execute_internal_fg(&mut self) {
         if self.execute_internal_g().is_err() {
-            self.frontend.print("Usage: fg %job_num\n");
+            self.frontend.push_str("Usage: fg %job_num\n");
         }
     }
 
@@ -58,7 +58,7 @@ where
                 self.display_prompt();
             }
             Ok(false) => {}
-            Err(()) => self.frontend.print("Usage: bg %job_num\n"),
+            Err(()) => self.frontend.push_str("Usage: bg %job_num\n"),
         }
     }
 
@@ -82,7 +82,7 @@ where
                             }
                             return Ok(true);
                         } else {
-                            self.frontend.print(&format!("No job with number {num} found!\n"));
+                            self.frontend.push_str(&format!("No job with number {num} found!\n"));
                             return Ok(false);
                         }
                     }

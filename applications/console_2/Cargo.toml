@@ -5,6 +5,7 @@ edition = "2021"
 
 [dependencies]
 async_channel = { path = "../../kernel/async_channel" }
+irq_safety = { git = "https://github.com/theseus-os/irq_safety" }
 log = "0.4"
 serial_port = { path = "../../kernel/serial_port" }
 shell = { package = "shell_2", path = "../../kernel/shell_2" }

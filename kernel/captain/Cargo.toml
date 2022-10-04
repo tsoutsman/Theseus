@@ -73,6 +73,9 @@ path = "../scheduler"
 [dependencies.console]
 path = "../console"
 
+[dependencies.console_2]
+path = "../../applications/console_2"
+
 [dependencies.print]
 path = "../print"
 

@@ -46,6 +46,7 @@ extern crate window_manager;
 extern crate multiple_heaps;
 extern crate console;
 #[cfg(simd_personality)] extern crate simd_personality;
+extern crate console_2;
 
 
 
@@ -152,7 +153,8 @@ pub fn init(
 
     // Now that key subsystems are initialized, we can spawn various system tasks/daemons
     // and then the first application(s).
-    console::start_connection_detection()?;
+    // console::start_connection_detection()?;
+    console_2::init().unwrap();
     first_application::start()?;
 
     info!("captain::init(): initialization done! Spawning an idle task on BSP core {} and enabling interrupts...", bsp_apic_id);

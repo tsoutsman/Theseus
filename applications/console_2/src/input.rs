@@ -3,13 +3,13 @@ use async_channel::Receiver;
 use serial_port::DataChunk;
 use shell::{Event, KeyboardEvent};
 
-pub(crate) struct SerialInput {
+pub(crate) struct Input {
     pub(crate) receiver: Receiver<DataChunk>,
     pub(crate) parser: vte::Parser,
     pub(crate) events: Vec<Event>,
 }
 
-impl shell::Input for SerialInput {
+impl shell::Input for Input {
     fn event(&mut self) -> Option<shell::Event> {
         if let Some(event) = self.events.pop() {
             return Some(event);

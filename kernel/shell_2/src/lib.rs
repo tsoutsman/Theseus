@@ -17,7 +17,6 @@ use alloc::{borrow::ToOwned, format, string::String, sync::Arc};
 use core2::io::Write;
 use hashbrown::HashMap;
 use job::Job;
-use keycodes_ascii::{KeyAction, KeyEvent, Keycode};
 use log::{error, warn};
 use mutex_sleep::MutexSleep as Mutex;
 use stdio::{KeyEventQueue, KeyEventQueueReader, KeyEventQueueWriter};
@@ -34,13 +33,14 @@ where
     pub(crate) key_event_consumer: Arc<Mutex<Option<KeyEventQueueReader>>>,
     pub(crate) foreground_job: Option<usize>,
     pub(crate) history: history::History,
+    pub(crate) input: T::Input,
 }
 
 impl<T> Shell<T>
 where
     T: Frontend,
 {
-    pub fn new(frontend: T) -> Self {
+    pub fn new(frontend: T, input: T::Input) -> Self {
         let key_event_queue = KeyEventQueue::new();
         let key_event_producer = key_event_queue.get_writer();
         let key_event_consumer = Arc::new(Mutex::new(Some(key_event_queue.get_reader())));
@@ -53,6 +53,7 @@ where
             history: history::History::new(),
             input_buf: String::new(),
             frontend,
+            input,
         }
     }
 
@@ -60,50 +61,49 @@ where
         if !self.input_buf.is_empty() {
             self.clear_input();
         }
-        self.frontend.print(&string);
+        self.frontend.push_str(&string);
         self.input_buf = string;
-        self.frontend.cursor_mut().set_offset(0);
+        self.frontend.cursor_mut().leftmost();
     }
 
     pub(crate) fn clear_input(&mut self) {
+        self.frontend.cursor_mut().rightmost();
         for _ in 0..self.input_buf.len() {
-            self.frontend.remove_char(1);
+            self.frontend.pop(false);
         }
         self.input_buf.clear();
-        self.frontend.cursor_mut().set_offset(0);
     }
 
-    pub(crate) fn push_to_input(&mut self, c: char) {
-        self.input_buf.push(c);
-        self.frontend.insert_char(c, 0);
+    pub(crate) fn push(&mut self, c: char) {
+        let offset = self.frontend.cursor().offset();
+        self.input_buf.insert(offset, c);
+        self.frontend.push(c);
     }
 
-    pub(crate) fn pop_from_input(&mut self) -> Option<char> {
-        todo!();
+    pub(crate) fn pop(&mut self, in_front: bool) {
+        let mut offset = self.frontend.cursor().offset();
+        if in_front {
+            offset += 1;
+        }
+        self.input_buf.remove(offset);
+        self.frontend.pop(in_front);
     }
 
     pub(crate) fn display_prompt(&mut self) {
         let env = task::get_my_current_task().unwrap().get_env();
         let prompt = format!("{}: ", env.lock().working_dir.lock().get_absolute_path());
-        self.frontend.print(&prompt);
-        todo!("print cmdline?");
+        self.frontend.push_str(&prompt);
+        self.frontend.push_str(&self.input_buf);
     }
 
-    fn handle_key_event(&mut self, key_event: KeyEvent) -> Result<()> {
-        if key_event.action != KeyAction::Pressed {
-            return Ok(());
-        }
-
-        let control = key_event.modifiers.is_control();
-        let shift = key_event.modifiers.is_shift();
-
-        match key_event.keycode {
-            Keycode::C if control => {
+    fn handle_key_event(&mut self, key_event: KeyboardEvent) -> Result<()> {
+        match key_event {
+            KeyboardEvent::CtrlC => {
                 let foreground_job = if let Some(job) = self.foreground_job {
                     job
                 } else {
                     self.clear_input();
-                    self.frontend.print("^C\n");
+                    self.frontend.push_str("^C\n");
                     self.history.reset();
                     self.display_prompt();
                     return Ok(());
@@ -120,7 +120,7 @@ where
                                 Ok(_) => {
                                     if let Err(e) = runqueue::remove_task_from_all(&task.rref) {
                                         error!(
-                                            "killed task but could not remove it from runqueue: {}",
+                                            "killed task but could not pop it from runqueue: {}",
                                             e
                                         );
                                     }
@@ -136,19 +136,19 @@ where
                             }
                         }
                     });
-                    self.frontend.print("^C\n");
+                    self.frontend.push_str("^C\n");
                     Ok(())
                 } else {
                     warn!("foreground job not found in job map");
 
                     self.clear_input();
-                    self.frontend.print("^C\n");
+                    self.frontend.push_str("^C\n");
                     self.display_prompt();
 
                     Ok(())
                 }
             }
-            Keycode::Z if control => {
+            KeyboardEvent::CtrlZ => {
                 let foreground_job = if let Some(job) = self.foreground_job {
                     job
                 } else {
@@ -178,7 +178,7 @@ where
                     Ok(())
                 }
             }
-            Keycode::D if control => {
+            KeyboardEvent::CtrlD => {
                 if let Some(foreground_job) = self.foreground_job {
                     if let Some(job) = self.jobs.get(&foreground_job) {
                         job.stdin.lock().set_eof();
@@ -186,92 +186,80 @@ where
                 }
                 Ok(())
             }
-            Keycode::Home if control => {
+            KeyboardEvent::Begin => {
                 self.frontend.to_begin();
                 Ok(())
             }
-            Keycode::End if control => {
+            KeyboardEvent::End => {
                 self.frontend.to_end();
                 Ok(())
             }
-            Keycode::PageUp if shift => {
+            KeyboardEvent::PageUp => {
                 self.frontend.page_up();
                 Ok(())
             }
-            Keycode::PageDown if shift => {
+            KeyboardEvent::PageDown => {
                 self.frontend.page_down();
                 Ok(())
             }
-            Keycode::Up if control && shift => {
+            KeyboardEvent::LineUp => {
                 self.frontend.line_up();
                 Ok(())
             }
-            Keycode::Down if control && shift => {
+            KeyboardEvent::LineDown => {
                 self.frontend.line_down();
                 Ok(())
             }
-            Keycode::Tab => self.auto_complete(),
-            Keycode::Backspace => {
-                let offset = self.frontend.cursor().offset() + 1;
-                if offset > self.input_buf.len() {
-                    Ok(())
-                } else {
-                    self.frontend.remove_char(offset);
-                    Ok(())
-                }
-            }
-            Keycode::Delete => {
-                let offset = self.frontend.cursor().offset();
-                if offset > 0 {
-                    self.frontend.remove_char(offset);
-                    self.frontend.cursor_mut().set_offset(offset - 1);
-                }
+            KeyboardEvent::Tab => self.auto_complete(),
+            KeyboardEvent::Backspace => {
+                self.pop(false);
                 Ok(())
             }
-            Keycode::Enter => {
-                todo!();
-            }
-            Keycode::Home => {
-                self.frontend.cursor_mut().set_offset(self.input_buf.len());
+            KeyboardEvent::Delete => {
+                self.pop(true);
                 Ok(())
             }
-            Keycode::End => {
-                self.frontend.cursor_mut().set_offset(0);
+            KeyboardEvent::Enter => {
+                self.handle_enter()
+            }
+            KeyboardEvent::Leftmost => {
+                self.frontend.cursor_mut().leftmost();
                 Ok(())
             }
-            Keycode::Up => {
+            KeyboardEvent::Rightmost => {
+                self.frontend.cursor_mut().rightmost();
+                Ok(())
+            }
+            KeyboardEvent::Up => {
                 if let Some(cmd) = self.history.previous(&self.input_buf) {
                     let cmd = cmd.to_owned();
                     self.set_input(cmd);
                 }
                 Ok(())
             }
-            Keycode::Down => {
+            KeyboardEvent::Down => {
                 if let Some(cmd) = self.history.next() {
                     let cmd = cmd.to_owned();
                     self.set_input(cmd);
                 }
                 Ok(())
             }
-            Keycode::Left => {
-                let offset = self.frontend.cursor().offset();
-                if offset < self.input_buf.len() {
-                    self.frontend.cursor_mut().set_offset(offset + 1);
-                }
-                Ok(())
-            }
-            Keycode::Right => {
+            KeyboardEvent::Left => {
                 let offset = self.frontend.cursor().offset();
                 if offset > 0 {
-                    self.frontend.cursor_mut().set_offset(offset - 1);
+                    self.frontend.cursor_mut().left();
                 }
-                self.frontend.cursor_mut().enable();
                 Ok(())
             }
-            _ => {
-                if let Some(c) = key_event.keycode.to_ascii(key_event.modifiers) {
-                    self.push_to_input(c);
+            KeyboardEvent::Right => {
+                let offset = self.frontend.cursor().offset();
+                if offset < self.input_buf.len() {
+                    self.frontend.cursor_mut().right();
                 }
+                Ok(())
+            }
+            KeyboardEvent::Other(c) => {
+                self.push(c);
                 Ok(())
             }
         }
@@ -280,7 +268,7 @@ where
     fn handle_enter(&mut self) -> Result<()> {
         if let Some(foreground_job) = self.foreground_job {
             if let Some(job) = self.jobs.get(&foreground_job) {
-                self.frontend.print("\n");
+                self.frontend.push('\n');
                 let mut buf = String::new();
                 core::mem::swap(&mut buf, &mut self.input_buf);
                 buf.push('\n');
@@ -291,10 +279,10 @@ where
             }
         } else {
             if self.input_buf.is_empty() {
-                self.frontend.print("\n");
+                self.frontend.push('\n');
                 self.display_prompt();
             } else {
-                self.frontend.print("\n");
+                self.frontend.push('\n');
                 // TODO: Push history after to avoid unescessary clone.
                 self.history.push(self.input_buf.clone());
 
@@ -304,7 +292,7 @@ where
                     let job_num = self.new_job();
                     if let Some("&") = self.input_buf.split_whitespace().last() {
                         self.frontend
-                            .print(&format!("[{}] [running] {}\n", job_num, self.input_buf));
+                            .push_str(&format!("[{}] [running] {}\n", job_num, self.input_buf));
                         self.foreground_job = None;
                         self.clear_input();
                         self.display_prompt();
@@ -325,11 +313,18 @@ where
         todo!();
     }
 
-    fn start(mut self) -> Result<()> {
+    pub fn start(mut self) -> Result<()> {
         self.display_prompt();
         self.frontend.refresh();
 
         loop {
+            match self.input.event() {
+                Some(event) => match event {
+                    Event::Keyboard(event) => self.handle_key_event(event)?,
+                    Event::Exit => break,
+                },
+                None => continue,
+            }
             // FIXME: Do stuff.
 
             // if let Some(ref key_event_consumer) =
@@ -348,5 +343,7 @@ where
             //     scheduler::schedule();
             // }
         }
+
+        Ok(())
     }
 }

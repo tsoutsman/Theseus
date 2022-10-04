@@ -2,18 +2,26 @@ pub trait Frontend {
     type Cursor: Cursor;
     type Input: Input;
 
-    fn insert_char(&mut self, c: char, offset_from_end: usize);
-    fn remove_char(&mut self, offset_from_end: usize);
+    /// Insert a character at the cursor.
+    fn push(&mut self, c: char);
 
-    fn print(&mut self, string: &str);
-    
+    /// Remove a character at the cursor.
+    ///
+    /// If the delete key was pressed, `in_front` should be `true`. If the
+    /// backspace key was pressed, it should be `false`.
+    fn pop(&mut self, in_front: bool);
+
+    /// Prints a string at the cursor.
+    fn push_str(&mut self, string: &str);
+
+    /// Clears the screen.
     fn clear(&mut self);
 
     fn cursor(&self) -> &Self::Cursor;
     fn cursor_mut(&mut self) -> &mut Self::Cursor;
 
     fn resize(&mut self, size: crate::Rectangle);
-    
+
     fn to_begin(&mut self);
     fn to_end(&mut self);
 
@@ -22,7 +30,7 @@ pub trait Frontend {
 
     fn page_up(&mut self);
     fn page_down(&mut self);
-    
+
     fn refresh(&mut self);
 }
 
@@ -36,7 +44,11 @@ pub trait Cursor {
 
     fn offset(&self) -> usize;
 
-    fn set_offset(&mut self, offset: usize);
+    fn left(&mut self);
+    fn right(&mut self);
+
+    fn leftmost(&mut self);
+    fn rightmost(&mut self);
 }
 
 pub struct Rectangle;

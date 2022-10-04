@@ -1,0 +1,7 @@
+[package]
+name = "terminal_emulator"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+shell = { package = "shell_2", path = "../../kernel/shell_2" }
