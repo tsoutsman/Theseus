@@ -135,6 +135,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "23b62fc65de8e4e7f52534fb52b0f3ed04746ae267519eef2a83941e8085068b"
 
 [[package]]
+name = "arrayvec"
+version = "0.7.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8da52d66c7071e2e3fa2a1e5c6d088fec47b593032b254f5e980de8ea54454d6"
+
+[[package]]
 name = "async_channel"
 version = "0.1.0"
 dependencies = [
@@ -993,8 +999,8 @@ dependencies = [
  "log",
  "mod_mgmt",
  "path",
- "shell",
  "spawn",
+ "terminal_emulator",
 ]
 
 [[package]]
@@ -1572,11 +1578,11 @@ dependencies = [
 
 [[package]]
 name = "log"
-version = "0.4.8"
+version = "0.4.17"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "14b6052be84e6b71ab17edffc2eeabf5c2c3ae1fdb464aae35ac50c67a44e1f7"
+checksum = "abb12e687cfb44aa40f41fc3978ef76448f9b6038cad6aef4259d3c095a2382e"
 dependencies = [
- "cfg-if 0.1.10",
+ "cfg-if 1.0.0",
 ]
 
 [[package]]
@@ -3253,6 +3259,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "terminal_emulator"
+version = "0.1.0"
+dependencies = [
+ "color",
+ "log",
+ "shapes",
+ "text_display",
+ "text_terminal",
+ "vte 0.11.0",
+ "window",
+ "window_manager",
+]
+
+[[package]]
 name = "test_backtrace"
 version = "0.1.0"
 dependencies = [
@@ -3482,7 +3502,7 @@ dependencies = [
  "log",
  "unicode-width",
  "util",
- "vte",
+ "vte 0.10.1",
 ]
 
 [[package]]
@@ -3807,7 +3827,18 @@ version = "0.10.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6cbce692ab4ca2f1f3047fcf732430249c0e971bfdd2b234cf2c47ad93af5983"
 dependencies = [
- "arrayvec",
+ "arrayvec 0.5.2",
+ "utf8parse",
+ "vte_generate_state_changes",
+]
+
+[[package]]
+name = "vte"
+version = "0.11.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1aae21c12ad2ec2d168c236f369c38ff332bc1134f7246350dca641437365045"
+dependencies = [
+ "arrayvec 0.7.2",
  "utf8parse",
  "vte_generate_state_changes",
 ]

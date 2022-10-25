@@ -1477,11 +1477,12 @@ impl ScreenPoint {
 /// A row index or number of rows in the y-dimension of the screen viewport. 
 #[derive(Copy, Clone, Debug, Default, PartialEq, Eq, PartialOrd, Ord)]
 #[derive(Add, AddAssign, Sub, SubAssign)]
-pub struct Row(u16);
+pub struct Row(pub u16);
+
 /// A column index or number of columns in the x-dimension of the screen viewport. 
 #[derive(Copy, Clone, Debug, Default, PartialEq, Eq, PartialOrd, Ord)]
 #[derive(Add, AddAssign, Sub, SubAssign)]
-pub struct Column(u16);
+pub struct Column(pub u16);
 
 
 /// A 2D position value that represents a point in the scrollback buffer,

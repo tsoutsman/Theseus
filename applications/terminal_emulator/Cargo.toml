@@ -1,0 +1,14 @@
+[package]
+name = "terminal_emulator"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+color = { path = "../../kernel/color" }
+log = "0.4.17"
+shapes = { path = "../../kernel/shapes" }
+text_display = { path = "../../kernel/displayable/text_display" }
+text_terminal = { path = "../../kernel/text_terminal" }
+vte = "0.11.0"
+window = { path = "../../kernel/window" }
+window_manager = { path = "../../kernel/window_manager" }

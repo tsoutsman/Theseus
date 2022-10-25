@@ -87,7 +87,7 @@ impl Displayable for TextDisplay {
 impl TextDisplay {
     /// Creates a new text displayable.
     /// # Arguments
-    /// * `width`, `height`: the dimensions of the text area, in number of characters.
+    /// * `width`, `height`: the dimensions of the text area, in number of pixels.
     /// * `fg_color`, `bg_color`: the color of the text and the background behind the text, respectively.
     pub fn new(
         width: usize,
