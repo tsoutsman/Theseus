@@ -3262,11 +3262,16 @@ dependencies = [
 name = "terminal_emulator"
 version = "0.1.0"
 dependencies = [
+ "app_io",
  "color",
+ "core2",
+ "keycodes_ascii",
  "log",
  "shapes",
+ "shell_2",
+ "spawn",
  "text_display",
- "text_terminal",
+ "tty",
  "vte 0.11.0",
  "window",
  "window_manager",

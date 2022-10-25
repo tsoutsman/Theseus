@@ -26,9 +26,10 @@ extern crate window_manager;
 extern crate shapes;
 extern crate color;
 
+pub use event_types::{Event, MousePositionEvent, KeyboardInputEvent, MouseEvent};
+
 use alloc::sync::Arc;
 use mpmc::Queue;
-use event_types::{Event, MousePositionEvent};
 use owning_ref::{MutexGuardRef, MutexGuardRefMut};
 use framebuffer::{Framebuffer, AlphaPixel};
 use color::{Color};

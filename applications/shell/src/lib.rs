@@ -614,11 +614,11 @@ impl Shell {
                     // If currently we have a task running, insert it to the input buffer, otherwise
                     // to the cmdline.
                     if let Some(fg_job_num) = self.fg_job_num {
-                        self.insert_char_to_input_buff(c, true)?;
+                        self.insert_char_to_input_buff(c.into(), true)?;
                         return Ok(());
                     }
                     else {
-                        self.insert_char_to_cmdline(c, true)?;
+                        self.insert_char_to_cmdline(c.into(), true)?;
                     }
                 },
                 None => {

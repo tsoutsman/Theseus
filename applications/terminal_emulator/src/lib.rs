@@ -2,12 +2,17 @@
 
 extern crate alloc;
 
-use alloc::{string::String, vec::Vec};
-use log::error;
+use alloc::{format, string::String, sync::Arc, vec::Vec};
+use core2::io;
+use keycodes_ascii::KeyAction;
+use log::{debug, error, warn};
 use shapes::Coord;
 use text_display::TextDisplay;
-use text_terminal::{Column, Row, ScreenSize, TerminalBackend, TextTerminal};
-use window::Window;
+use tty::{Master, Tty};
+use window::{Event, KeyboardInputEvent, Window};
+
+const FONT_FOREGROUND_COLOR: color::Color = color::LIGHT_GREEN;
+const FONT_BACKGROUND_COLOR: color::Color = color::BLACK;
 
 pub fn main(_: Vec<String>) -> isize {
     match _main() {
@@ -20,114 +25,272 @@ pub fn main(_: Vec<String>) -> isize {
 }
 
 pub fn _main() -> Result<(), &'static str> {
-    let backend = EmulatorBackend::new()?;
-    let (width, height) = backend.text_display.get_dimensions();
-    let terminal = TextTerminal::new(width as u16, height as u16, backend);
+    let wm_ref = window_manager::WINDOW_MANAGER
+        .get()
+        .ok_or("The window manager is not initialized")?;
+    let (window_width, window_height) = {
+        let wm = wm_ref.lock();
+        wm.get_screen_size()
+    };
+    let window = window::Window::new(
+        Coord::new(0, 0),
+        window_width,
+        window_height,
+        FONT_BACKGROUND_COLOR,
+    )?;
 
-    Ok(())
+    let area = window.area();
+    let text_display = TextDisplay::new(
+        area.width(),
+        area.height(),
+        FONT_FOREGROUND_COLOR,
+        FONT_BACKGROUND_COLOR,
+    )?;
+
+    let tty = Tty::new();
+
+    let mut emulator = Emulator {
+        master: tty.master(),
+        text_display,
+        window,
+        cursor: Cursor::default(),
+        saved_cursor: None,
+    };
+
+    let task = spawn::new_task_builder(shell::main, Vec::new())
+        // TODO: Use unique name
+        .name(format!("shell"))
+        .block()
+        .spawn()
+        .unwrap();
+
+    let id = task.id;
+    let stream = Arc::new(tty.slave());
+    app_io::insert_child_streams(
+        id,
+        app_io::IoStreams {
+            discipline: Some(stream.discipline()),
+            stdin: stream.clone(),
+            stdout: stream.clone(),
+            stderr: stream,
+        },
+    );
+
+    task.unblock();
+
+    let mut parser = vte::Parser::new();
+
+    loop {
+        while let Some(event) = emulator.event()? {
+            match event {
+                Event::KeyboardEvent(KeyboardInputEvent { key_event }) => {
+                    if key_event.action == KeyAction::Pressed {
+                        if let Some(ascii) = key_event.keycode.to_ascii(key_event.modifiers) {
+                            emulator
+                                .write_byte(ascii)
+                                .map_err(|_| "failed to write to master")?;
+                        } else {
+                            warn!("terminal_emulator: couldn't convert keycode to ascii {key_event:?}");
+                        }
+                    }
+                }
+                Event::OutputEvent(_) => todo!(),
+                Event::WindowResizeEvent(_) => todo!(),
+                Event::ExitEvent => todo!(),
+                Event::MousePositionEvent(_) => {}
+                Event::MouseMovementEvent(_) => {}
+            }
+        }
+
+        let mut buf = [0; 256];
+        let len = match emulator.try_read(&mut buf) {
+            Ok(len) => len,
+            Err(e) => {
+                if e.kind() == core2::io::ErrorKind::WouldBlock {
+                    continue;
+                } else {
+                    return Err("failed to read from master");
+                }
+            }
+        };
+
+        for byte in &buf[..len] {
+            parser.advance(&mut emulator, *byte);
+        }
+
+        // TODO: Refresh window
+    }
 }
 
 struct Emulator {
-    terminal: TextTerminal<EmulatorBackend>,
+    master: Master,
+    text_display: TextDisplay,
+    window: Window,
+    cursor: Cursor,
+    saved_cursor: Option<Cursor>,
 }
 
 impl Emulator {
-    fn new() -> Result<Self, &'static str> {
-        let backend = EmulatorBackend::new()?;
-        let (width, height) = backend.text_display.get_dimensions();
-        let terminal = TextTerminal::new(width as u16, height as u16, backend);
+    fn event(&mut self) -> Result<Option<Event>, &'static str> {
+        self.window.handle_event()
+    }
 
-        Ok(Self { terminal })
+    fn write_byte(&mut self, byte: u8) -> io::Result<()> {
+        self.master.write_byte(byte)
+    }
+
+    fn try_read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+        self.master.try_read(buf)
     }
 }
 
-struct EmulatorBackend {
-    window: Window,
-    text_display: TextDisplay,
-}
+// https://gist.github.com/fnky/458719343aabd01cfb17a3a4f7296797
 
-impl EmulatorBackend {
-    fn new() -> Result<Self, &'static str> {
-        const FONT_FOREGROUND_COLOR: color::Color = color::LIGHT_GREEN;
-        const FONT_BACKGROUND_COLOR: color::Color = color::BLACK;
-
-        let wm_ref = window_manager::WINDOW_MANAGER
-            .get()
-            .ok_or("The window manager is not initialized")?;
-        let (window_width, window_height) = {
-            let wm = wm_ref.lock();
-            wm.get_screen_size()
-        };
-        let window = window::Window::new(
-            Coord::new(0, 0),
-            window_width,
-            window_height,
-            FONT_BACKGROUND_COLOR,
-        )?;
-
-        let area = window.area();
-        let text_display = TextDisplay::new(
-            area.width(),
-            area.height(),
-            FONT_FOREGROUND_COLOR,
-            FONT_BACKGROUND_COLOR,
-        )?;
-
-        Ok(Self {
-            window,
-            text_display,
-        })
+impl vte::Perform for Emulator {
+    fn print(&mut self, c: char) {
+        debug!("[print]: {c:?}");
     }
-}
 
-impl TerminalBackend for EmulatorBackend {
-    type DisplayError = ();
-
-    fn screen_size(&self) -> ScreenSize {
-        let (width, height) = self.text_display.get_dimensions();
-        ScreenSize {
-            num_columns: Column(width as u16),
-            num_rows: Row(height as u16),
+    fn execute(&mut self, byte: u8) {
+        debug!("[execute]: {byte:?}");
+        match byte {
+            0x7 => todo!("execute bell"),
+            0x8 => todo!("execute backspace"),
+            b'\t' => todo!("execute tab"),
+            b'\n' => todo!("execute line feed"),
+            b'\r' => self.cursor.column = 0,
+            0x7f => todo!("execute delete"),
+            _ => warn!("[execute]: unknown byte {byte:?}"),
         }
     }
 
-    fn update_screen_size(&mut self, new_size: ScreenSize) {
-        todo!()
+    fn hook(&mut self, params: &vte::Params, intermediates: &[u8], ignore: bool, action: char) {
+        debug!("[hook]: {params:?}, {intermediates:?}, {ignore}, {action:?}");
     }
 
-    fn display(
+    fn put(&mut self, byte: u8) {
+        debug!("[put]: {byte:?}")
+    }
+
+    fn unhook(&mut self) {
+        debug!("[unhook]");
+    }
+
+    fn osc_dispatch(&mut self, params: &[&[u8]], bell_terminated: bool) {
+        debug!("[osc_dispatch]: {params:?}, {bell_terminated}");
+    }
+
+    // CSI = ESC[
+    fn csi_dispatch(
         &mut self,
-        display_action: text_terminal::DisplayAction,
-        scrollback_buffer: &text_terminal::ScrollbackBuffer,
-        previous_style: Option<text_terminal::Style>,
-    ) -> Result<text_terminal::ScreenPoint, Self::DisplayError> {
-        todo!()
+        params: &vte::Params,
+        intermediates: &[u8],
+        ignore: bool,
+        action: char,
+    ) {
+        debug!("[csi_dispatch]: {params:?}, {intermediates:?}, {ignore}, {action:?}");
+
+        if let Ok((param_1, param_2)) = parse_params(params) {
+            match (param_1, param_2, action) {
+                // Cursor controls
+                (None, None, 'H') => todo!("move cursor to home"),
+                (Some(row), Some(column), 'H' | 'f') => {
+                    let (width, height) = self.text_display.get_dimensions();
+                    let row = core::cmp::min((width - 1) as u16, row);
+                    let column = core::cmp::min((height - 1) as u16, column);
+
+                    self.cursor = Cursor { row, column };
+                }
+                (Some(num), None, 'A') => todo!("move cursor up {num} lines"),
+                (Some(num), None, 'B') => todo!("move cursor down {num} lines"),
+                (Some(num), None, 'C') => todo!("move cursor right {num} columns"),
+                (Some(num), None, 'D') => todo!("move cursor left {num} columns"),
+                (Some(num), None, 'E') => {
+                    todo!("move cursor to beggining of line, {num} lines down")
+                }
+                (Some(num), None, 'F') => todo!("move cursor to beggining of line, {num} lines up"),
+                (Some(num), None, 'G') => todo!("move cursor to column {num}"),
+                (Some(6), None, 'n') => {
+                    // TODO: Don't cast
+                    self.master
+                        .write(&[
+                            0x1b,
+                            b'[',
+                            self.cursor.row as u8,
+                            b';',
+                            self.cursor.column as u8,
+                            b'R',
+                        ])
+                        .unwrap();
+                }
+                (None, None, 's') => self.saved_cursor = Some(self.cursor.clone()),
+                (None, None, 'u') => self.cursor = self.saved_cursor.unwrap_or(Cursor::default()),
+
+                // Erase functions
+                (None | Some(0), None, 'J') => todo!("erase from cursor until end of screen"),
+                (Some(1), None, 'J') => todo!("erase from cursor to beggining of screen"),
+                (Some(2), None, 'J') => todo!("erase entire screen"),
+                (Some(3), None, 'J') => todo!("erase saved lines"),
+                (None | Some(0), None, 'K') => todo!("erase from cursor to end of line"),
+                (Some(1), None, 'K') => todo!("erase start of line to the cursor"),
+                (Some(2), None, 'K') => todo!("erase the entire line"),
+
+                _ => todo!(),
+            }
+        } else {
+            warn!("[csi_dispatch]: failed to parse params {params:?}");
+        }
     }
 
-    fn move_cursor_to(
-        &mut self,
-        new_position: text_terminal::ScreenPoint,
-    ) -> text_terminal::ScreenPoint {
-        todo!()
-    }
+    // ESC (no [)
+    fn esc_dispatch(&mut self, intermediates: &[u8], ignore: bool, byte: u8) {
+        debug!("[esc_dispatch]: {intermediates:?}, {ignore}, {byte:?}");
 
-    fn move_cursor_by(&mut self, num_columns: i32, num_rows: i32) -> text_terminal::ScreenPoint {
-        todo!()
+        match byte {
+            b'M' => todo!("move cursor one line up, scrolling if needed"),
+            b'7' => self.saved_cursor = Some(self.cursor.clone()),
+            b'8' => self.cursor = self.saved_cursor.unwrap_or(Cursor::default()),
+            _ => todo!(),
+        }
     }
+}
 
-    fn set_insert_mode(&mut self, mode: text_terminal::InsertMode) {
-        todo!()
-    }
+fn parse_params(params: &vte::Params) -> Result<(Option<u16>, Option<u16>), ()> {
+    let mut iter = params.into_iter();
 
-    fn reset_screen(&mut self) {
-        todo!()
-    }
+    let (mut param_1_iter, mut param_2_iter) = (
+        iter.next().map(|array| array.iter()),
+        iter.next().map(|array| array.iter()),
+    );
+    let (param_1, param_2) = (
+        param_1_iter
+            .as_mut()
+            .map(|iter| iter.next())
+            .flatten()
+            .copied(),
+        param_2_iter
+            .as_mut()
+            .map(|iter| iter.next())
+            .flatten()
+            .copied(),
+    );
 
-    fn clear_screen(&mut self) {
-        todo!()
+    if iter.next().is_some()
+        || param_1_iter
+            .map(|mut iter| iter.next().is_some())
+            .unwrap_or(false)
+        || param_2_iter
+            .map(|mut iter| iter.next().is_some())
+            .unwrap_or(false)
+    {
+        Err(())
+    } else {
+        Ok((param_1, param_2))
     }
+}
 
-    fn write_bytes(&mut self, bytes: &[u8]) {
-        panic!("write_bytes shouldn't be called for the emulator");
-    }
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+struct Cursor {
+    column: u16,
+    row: u16,
 }

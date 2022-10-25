@@ -5,8 +5,9 @@ extern crate mouse_data;
 extern crate alloc;
 extern crate shapes;
 
+pub use mouse_data::MouseEvent;
+
 use keycodes_ascii::KeyEvent;
-use mouse_data::MouseEvent;
 use alloc::string::String;
 use shapes::{Coord, Rectangle};
 
