@@ -29,13 +29,14 @@ extern crate color;
 use core::ops::DerefMut;
 use alloc::string::{String, ToString};
 use alloc::vec::Vec;
+use alloc::borrow::ToOwned;
 use cursor::*;
 use text_display::TextDisplay;
 use displayable::Displayable;
 use event_types::Event;
 use font::{CHARACTER_HEIGHT, CHARACTER_WIDTH};
 use framebuffer::{Framebuffer, Pixel};
-use color::{Color};
+use color::Color;
 use shapes::{Coord, Rectangle};
 use tsc::{tsc_ticks, TscTicks};
 use window::Window;
@@ -386,7 +387,7 @@ impl Terminal {
         };
         let result  = self.scrollback_buffer.get(start_idx..=end_idx); // =end_idx includes the end index in the slice
         if let Some(slice) = result {
-            self.text_display.set_text(&slice);
+            self.text_display.set_text(slice.to_owned());
             self.display_text()?;
         } else {
             return Err("could not get slice of scrollback buffer string");
@@ -409,7 +410,7 @@ impl Terminal {
         let result = self.scrollback_buffer.get(start_idx..end_idx);
 
         if let Some(slice) = result {
-            self.text_display.set_text(slice);
+            self.text_display.set_text(slice.to_owned());
             self.display_text()?;
         } else {
             return Err("could not get slice of scrollback buffer string");

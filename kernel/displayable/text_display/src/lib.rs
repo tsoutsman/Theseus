@@ -141,7 +141,7 @@ impl TextDisplay {
     }
 
     /// Sets the text of the text displayable
-    pub fn set_text(&mut self, text: &str) {
-        self.text = String::from(text);
+    pub fn set_text(&mut self, text: String) {
+        self.text = text;
     }
 }
