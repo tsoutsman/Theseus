@@ -32,15 +32,18 @@ mod paging;
 #[cfg(mapper_spillful)]
 pub mod paging;
 
+pub use self::paging::{MappedPages, PageTable, Mapper};
 
-pub use self::paging::*;
+pub use memory_structs::{Frame, Page, FrameRange, PageRange, VirtualAddress, PhysicalAddress};
+pub use page_allocator::{AllocatedPages, allocate_pages, allocate_pages_at,
+    allocate_pages_by_bytes, allocate_pages_by_bytes_at};
 
-pub use memory_structs::*;
-pub use page_allocator::*;
-pub use frame_allocator::*;
+pub use frame_allocator::{AllocatedFrames, MemoryRegionType, PhysicalMemoryRegion,
+    allocate_frames_by_bytes_at, allocate_frames_by_bytes, allocate_frames_at};
 
 #[cfg(target_arch = "x86_64")]
-use memory_x86_64::*;
+use memory_x86_64::{BootInformation, get_kernel_address, get_boot_info_mem_area, find_section_memory_bounds,
+    get_vga_mem_addr, get_modules_address, tlb_flush_virt_addr, tlb_flush_all, get_p4};
 
 #[cfg(target_arch = "x86_64")]
 pub use memory_x86_64::EntryFlags;// Export EntryFlags so that others does not need to get access to memory_<arch>.
@@ -58,10 +61,10 @@ static KERNEL_MMI: Once<MmiRef> = Once::new();
 /// A shareable reference to a `MemoryManagementInfo` struct wrapper in a lock.
 pub type MmiRef = Arc<MutexIrqSafe<MemoryManagementInfo>>;
 
-/// Returns a cloned reference to the kernel's `MemoryManagementInfo`, if initialized.
-/// If not, it returns None.
-pub fn get_kernel_mmi_ref() -> Option<MmiRef> {
-    KERNEL_MMI.get().cloned()
+/// Returns a reference to the kernel's `MemoryManagementInfo`, if initialized.
+/// If not, it returns `None`.
+pub fn get_kernel_mmi_ref() -> Option<&'static MmiRef> {
+    KERNEL_MMI.get()
 }
 
 
@@ -87,14 +90,11 @@ pub struct MemoryManagementInfo {
 /// Currently, this function acquires the lock on the frame allocator and the kernel's `MemoryManagementInfo` instance.
 /// Thus, the caller should ensure that the locks on those two variables are not held when invoking this function.
 pub fn create_contiguous_mapping(size_in_bytes: usize, flags: EntryFlags) -> Result<(MappedPages, PhysicalAddress), &'static str> {
+    let kernel_mmi_ref = get_kernel_mmi_ref().ok_or("create_contiguous_mapping(): KERNEL_MMI was not yet initialized!")?;
     let allocated_pages = allocate_pages_by_bytes(size_in_bytes).ok_or("memory::create_contiguous_mapping(): couldn't allocate contiguous pages!")?;
     let allocated_frames = allocate_frames_by_bytes(size_in_bytes).ok_or("memory::create_contiguous_mapping(): couldn't allocate contiguous frames!")?;
-
-    let kernel_mmi_ref = get_kernel_mmi_ref().ok_or("create_contiguous_mapping(): KERNEL_MMI was not yet initialized!")?;
-    let mut kernel_mmi = kernel_mmi_ref.lock();
-
     let starting_phys_addr = allocated_frames.start_address();
-    let mp = kernel_mmi.page_table.map_allocated_pages_to(allocated_pages, allocated_frames, flags)?;
+    let mp = kernel_mmi_ref.lock().page_table.map_allocated_pages_to(allocated_pages, allocated_frames, flags)?;
     Ok((mp, starting_phys_addr))
 }
 
@@ -108,14 +108,13 @@ pub fn create_contiguous_mapping(size_in_bytes: usize, flags: EntryFlags) -> Res
 /// Currently, this function acquires the lock on the kernel's `MemoryManagementInfo` instance.
 /// Thus, the caller should ensure that lock is not held when invoking this function.
 pub fn create_mapping(size_in_bytes: usize, flags: EntryFlags) -> Result<MappedPages, &'static str> {
-    let allocated_pages = allocate_pages_by_bytes(size_in_bytes).ok_or("memory::create_mapping(): couldn't allocate pages!")?;
     let kernel_mmi_ref = get_kernel_mmi_ref().ok_or("create_contiguous_mapping(): KERNEL_MMI was not yet initialized!")?;
-    let mut kernel_mmi = kernel_mmi_ref.lock();
-    kernel_mmi.page_table.map_allocated_pages(allocated_pages, flags)
+    let allocated_pages = allocate_pages_by_bytes(size_in_bytes).ok_or("memory::create_mapping(): couldn't allocate pages!")?;
+    kernel_mmi_ref.lock().page_table.map_allocated_pages(allocated_pages, flags)
 }
 
 
-pub static BROADCAST_TLB_SHOOTDOWN_FUNC: Once<fn(PageRange)> = Once::new();
+static BROADCAST_TLB_SHOOTDOWN_FUNC: Once<fn(PageRange)> = Once::new();
 
 /// Set the function callback that will be invoked every time a TLB shootdown is necessary,
 /// i.e., during page table remapping and unmapping operations.
@@ -204,7 +203,7 @@ pub fn init(
         }
     }
 
-    frame_allocator::init(free_regions.iter().flatten(), reserved_regions.iter().flatten())?;
+    let into_alloc_frames_fn = frame_allocator::init(free_regions.iter().flatten(), reserved_regions.iter().flatten())?;
     debug!("Initialized new frame allocator!");
     frame_allocator::dump_frame_allocator_state();
 
@@ -222,7 +221,10 @@ pub fn init(
         boot_info_pages,
         higher_half_mapped_pages,
         identity_mapped_pages
-    ) = paging::init(boot_info)?;
+    ) = paging::init(
+        boot_info,
+        into_alloc_frames_fn,
+    )?;
 
     debug!("Done with paging::init(). new page_table: {:?}", page_table);
     Ok((
@@ -243,9 +245,12 @@ pub fn init(
 /// Returns the following tuple, if successful:
 ///  * The kernel's new MemoryManagementInfo
 ///  * The kernel's list of identity-mapped MappedPages which should be dropped before starting the first userspace program. 
-pub fn init_post_heap(page_table: PageTable, mut higher_half_mapped_pages: [Option<MappedPages>; 32], mut identity_mapped_pages: [Option<MappedPages>; 32], heap_mapped_pages: MappedPages) 
--> Result<(Arc<MutexIrqSafe<MemoryManagementInfo>>, Vec<MappedPages>), &'static str> 
-{
+pub fn init_post_heap(
+    page_table: PageTable,
+    mut higher_half_mapped_pages: [Option<MappedPages>; 32],
+    mut identity_mapped_pages: [Option<MappedPages>; 32],
+    heap_mapped_pages: MappedPages
+) -> Result<(MmiRef, Vec<MappedPages>), &'static str> {
     // HERE: heap is initialized! Can now use alloc types.
     // After this point, we must "forget" all of the above mapped_pages instances if an error occurs,
     // because they will be auto-unmapped from the new page table upon return, causing all execution to stop.  

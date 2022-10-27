@@ -260,17 +260,17 @@ pub fn swap_crates(
         let new_crate_ref = if is_optimized {
             debug!("swap_crates(): OPTIMIZED: looking for new crate {:?} in cache", new_crate_name);
             namespace_of_new_crates.get_crate(&new_crate_name)
-                .ok_or_else(|| "BUG: swap_crates(): Couldn't get new crate from optimized cache")?
+                .ok_or("BUG: swap_crates(): Couldn't get new crate from optimized cache")?
         } else {
             #[cfg(not(loscd_eval))]
             debug!("looking for newly-loaded crate {:?} in temp namespace", new_crate_name);
             namespace_of_new_crates.get_crate(&new_crate_name)
-                .ok_or_else(|| "BUG: Couldn't get new crate that should've just been loaded into a new temporary namespace")?
+                .ok_or("BUG: Couldn't get new crate that should've just been loaded into a new temporary namespace")?
         };
 
         // scope the lock on the `new_crate_ref`
         {
-            let mut new_crate = new_crate_ref.lock_as_mut().ok_or_else(|| 
+            let mut new_crate = new_crate_ref.lock_as_mut().ok_or(
                 "BUG: swap_crates(): new_crate was unexpectedly shared in another namespace (couldn't get as exclusively mutable)...?"
             )?;
 
@@ -291,20 +291,16 @@ pub fn swap_crates(
                 // get the section from the new crate that corresponds to the `old_sec`
                 let prefix = if crates_have_same_name {
                     Cow::from(old_sec_name_without_hash)
+                } else if let Some(s) = replace_containing_crate_name(old_sec_name_without_hash, &old_crate_name_without_hash, &new_crate_name_without_hash) {
+                    Cow::from(s)
                 } else {
-                    if let Some(s) = replace_containing_crate_name(old_sec_name_without_hash, &old_crate_name_without_hash, &new_crate_name_without_hash) {
-                        Cow::from(s)
-                    } else {
-                        Cow::from(old_sec_name_without_hash)
-                    }
+                    Cow::from(old_sec_name_without_hash)
                 };
                 let new_dest_sec = {
                     let mut iter = new_crate.data_sections_iter().filter(|sec| sec.name.starts_with(&*prefix));
                     iter.next()
                         .filter(|_| iter.next().is_none()) // ensure single element
-                        .ok_or_else(|| 
-                            "couldn't find destination section in new crate to copy old_sec's data into (.data/.bss state transfer)"
-                        )
+                        .ok_or("couldn't find destination section in new crate to copy old_sec's data into (.data/.bss state transfer)")
                 }?;
 
                 #[cfg(not(loscd_eval))]
@@ -437,9 +433,9 @@ pub fn swap_crates(
 
                         write_relocation(
                             relocation_entry, 
-                            &mut target_sec_mapped_pages, 
+                            target_sec_mapped_pages.as_slice_mut(0, target_sec.mapped_pages_offset + target_sec.size())?,
                             target_sec.mapped_pages_offset, 
-                            new_source_sec.start_address(), 
+                            new_source_sec.start_address(),
                             verbose_log
                         )?;
 
@@ -512,7 +508,8 @@ pub fn swap_crates(
             // as a backup, search fuzzily to accommodate state transfer function symbol names without full hashes
             .or_else(|| namespace_of_new_crates.get_symbol_starting_with(&symbol).upgrade())
             .ok_or("couldn't find specified state transfer function in the new CrateNamespace")?;
-        let st_fn = state_transfer_fn_sec.as_func::<StateTransferFunction>()?;
+        // FIXME SAFETY: None. swap_crates should probably be unsafe as there is no guaranteed that the state transfer functions have the correct signature.
+        let st_fn = unsafe { state_transfer_fn_sec.as_func::<StateTransferFunction>() }?;
         #[cfg(not(loscd_eval))]
         debug!("swap_crates(): invoking the state transfer function {:?} with old_ns: {:?}, new_ns: {:?}", symbol, this_namespace.name(), namespace_of_new_crates.name());
         st_fn(this_namespace, &namespace_of_new_crates)?;

@@ -131,7 +131,7 @@ pub fn do_self_swap(
         swap_requests, 
         override_namespace_crate_dir,
         state_transfer_functions,
-        &kernel_mmi_ref,
+        kernel_mmi_ref,
         verbose_log,
         false // enable crate_cahce
     );
@@ -289,7 +289,7 @@ pub fn constant_offset_fix(
             }
         }
 
-        x = x + 8;
+        x += 8;
         if x > top {
             break;
         }
@@ -470,7 +470,7 @@ fn iterative_swap_policy() -> Option<String> {
             if let Some(error_crate) = unhandled_list[0].crate_error_occured.clone() {
 
                 let error_crate_name = error_crate.clone();
-                let error_crate_name_simple = error_crate_name.split("-").next().unwrap_or_else(|| &error_crate_name);
+                let error_crate_name_simple = error_crate_name.split("-").next().unwrap_or(&error_crate_name);
 
                 // We check whether the fault is logged previously
                 let fe_last_fault = fault_log::get_the_most_recent_match(error_crate_name_simple);

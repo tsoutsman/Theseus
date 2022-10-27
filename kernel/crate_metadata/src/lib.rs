@@ -40,11 +40,12 @@
 //! [`B.sections_dependent_on_me`]: LoadedSectionInner::sections_dependent_on_me
 //! 
 
+#![deny(unsafe_op_in_unsafe_fn)]
 #![no_std]
 
 extern crate alloc;
 
-use core::convert::TryFrom;
+use core::{convert::TryFrom, mem::size_of};
 use core::fmt;
 use core::ops::Range;
 use log::{error, debug, trace};
@@ -63,7 +64,20 @@ use cow_arc::{CowArc, CowWeak};
 use fs_node::{FileRef, WeakFileRef};
 use hashbrown::HashMap;
 use goblin::elf::reloc::*;
+
 pub use str_ref::StrRef;
+pub use crate_metadata_serde::{
+    SectionType,
+    Shndx,
+    TEXT_SECTION_NAME,
+    RODATA_SECTION_NAME,
+    DATA_SECTION_NAME,
+    BSS_SECTION_NAME,
+    TLS_DATA_SECTION_NAME,
+    TLS_BSS_SECTION_NAME,
+    GCC_EXCEPT_TABLE_SECTION_NAME,
+    EH_FRAME_SECTION_NAME,
+};
 
 
 /// A Strong reference to a [`LoadedCrate`].
@@ -74,10 +88,6 @@ pub type WeakCrateRef = CowWeak<LoadedCrate>;
 pub type StrongSectionRef  = Arc<LoadedSection>;
 /// A Weak reference ([`Weak`]) to a [`LoadedSection`].
 pub type WeakSectionRef = Weak<LoadedSection>;
-/// A Section Header iNDeX (SHNDX), as specified by the ELF format. 
-/// Even though this is typically encoded as a `u16`, its decoded form can exceed the max size of `u16`.
-pub type Shndx = usize;
-
 
 /// `.text` sections are read-only and executable.
 pub const TEXT_SECTION_FLAGS:     EntryFlags = EntryFlags::PRESENT;
@@ -306,7 +316,7 @@ impl LoadedCrate {
     pub fn crate_name_without_hash(&self) -> &str {
         self.crate_name.split(CRATE_HASH_DELIMITER)
             .next()
-            .unwrap_or_else(|| &self.crate_name)
+            .unwrap_or(&self.crate_name)
     }
 
     /// Returns this crate name as a symbol prefix, including a trailing "`::`".
@@ -437,7 +447,7 @@ impl LoadedCrate {
             let new_sec_mapped_pages_offset = old_sec.mapped_pages_offset;
             let (new_sec_mapped_pages_ref, new_sec_virt_addr) = match old_sec.typ {
                 SectionType::Text => (
-                    new_text_pages_ref.clone().ok_or_else(|| "BUG: missing text pages in newly-copied crate")?,
+                    new_text_pages_ref.clone().ok_or("BUG: missing text pages in newly-copied crate")?,
                     new_text_pages_locked.as_ref().and_then(|tp| tp.address_at_offset(new_sec_mapped_pages_offset)),
                 ),
                 SectionType::Rodata
@@ -445,16 +455,16 @@ impl LoadedCrate {
                 | SectionType::TlsBss
                 | SectionType::TlsData 
                 | SectionType::EhFrame => (
-                    new_rodata_pages_ref.clone().ok_or_else(|| "BUG: missing rodata pages in newly-copied crate")?,
+                    new_rodata_pages_ref.clone().ok_or("BUG: missing rodata pages in newly-copied crate")?,
                     new_rodata_pages_locked.as_ref().and_then(|rp| rp.address_at_offset(new_sec_mapped_pages_offset)),
                 ),
                 SectionType::Data
                 | SectionType::Bss => (
-                    new_data_pages_ref.clone().ok_or_else(|| "BUG: missing data pages in newly-copied crate")?,
+                    new_data_pages_ref.clone().ok_or("BUG: missing data pages in newly-copied crate")?,
                     new_data_pages_locked.as_ref().and_then(|dp| dp.address_at_offset(new_sec_mapped_pages_offset)),
                 ),
             };
-            let new_sec_virt_addr = new_sec_virt_addr.ok_or_else(|| "BUG: couldn't get virt_addr for new section")?;
+            let new_sec_virt_addr = new_sec_virt_addr.ok_or("BUG: couldn't get virt_addr for new section")?;
 
             let new_sec = Arc::new(LoadedSection::with_dependencies(
                 old_sec.typ,                            // section type is the same
@@ -482,20 +492,24 @@ impl LoadedCrate {
             let new_sec_mapped_pages = match new_sec.typ {
                 SectionType::Text => new_text_pages_locked
                     .as_mut()
-                    .ok_or_else(|| "BUG: missing text pages in newly-copied crate")?,
+                    .ok_or("BUG: missing text pages in newly-copied crate")?,
                 SectionType::Rodata
                 | SectionType::TlsBss
                 | SectionType::TlsData
                 | SectionType::GccExceptTable
                 | SectionType::EhFrame => new_rodata_pages_locked
                     .as_mut()
-                    .ok_or_else(|| "BUG: missing rodata pages in newly-copied crate")?,
+                    .ok_or("BUG: missing rodata pages in newly-copied crate")?,
                 SectionType::Data
                 | SectionType::Bss => new_data_pages_locked
                     .as_mut()
-                    .ok_or_else(|| "BUG: missing data pages in newly-copied crate")?,
+                    .ok_or("BUG: missing data pages in newly-copied crate")?,
             };
             let new_sec_mapped_pages_offset = new_sec.mapped_pages_offset;
+            let new_sec_slice: &mut [u8] = new_sec_mapped_pages.as_slice_mut(
+                0,
+                new_sec_mapped_pages_offset + new_sec.size(),
+            )?;
 
             // The newly-duplicated crate still depends on the same sections, so we keep those as is, 
             // but we do need to recalculate those relocations.
@@ -507,7 +521,7 @@ impl LoadedCrate {
                     // perform the actual fix by writing the relocation
                     write_relocation(
                         strong_dep.relocation, 
-                        new_sec_mapped_pages, 
+                        new_sec_slice, 
                         new_sec_mapped_pages_offset,
                         source_sec.start_address(),
                         true
@@ -529,7 +543,7 @@ impl LoadedCrate {
             // which are completely safe to clone without needing any fix ups. 
             for internal_dep in &new_sec.inner.read().internal_dependencies {
                 let source_sec = new_sections.get(&internal_dep.source_sec_shndx)
-                    .ok_or_else(|| "Couldn't get new section specified by an internal dependency's source_sec_shndx")?;
+                    .ok_or("Couldn't get new section specified by an internal dependency's source_sec_shndx")?;
 
                 // The source and target (new_sec) sections might be the same, so we need to check first
                 // to ensure that we don't cause deadlock by trying to lock the same section twice.
@@ -542,7 +556,7 @@ impl LoadedCrate {
                 };
                 write_relocation(
                     internal_dep.relocation, 
-                    new_sec_mapped_pages, 
+                    new_sec_slice, 
                     new_sec_mapped_pages_offset,
                     source_sec_vaddr,
                     true
@@ -562,7 +576,7 @@ impl LoadedCrate {
         // set the new_crate's `sections` list, since we didn't do it earlier
         {
             let mut new_crate_mut = new_crate.lock_as_mut()
-                .ok_or_else(|| "BUG: LoadedCrate::deep_copy(): couldn't get exclusive mutable access to newly-copied crate")?;
+                .ok_or("BUG: LoadedCrate::deep_copy(): couldn't get exclusive mutable access to newly-copied crate")?;
             new_crate_mut.sections = new_sections;
         }
 
@@ -571,105 +585,34 @@ impl LoadedCrate {
 }
 
 
-pub const TEXT_SECTION_NAME            : &str = ".text";
-pub const RODATA_SECTION_NAME          : &str = ".rodata";
-pub const DATA_SECTION_NAME            : &str = ".data";
-pub const BSS_SECTION_NAME             : &str = ".bss";
-pub const TLS_DATA_SECTION_NAME        : &str = ".tdata";
-pub const TLS_BSS_SECTION_NAME         : &str = ".tbss";
-pub const GCC_EXCEPT_TABLE_SECTION_NAME: &str = ".gcc_except_table";
-pub const EH_FRAME_SECTION_NAME        : &str = ".eh_frame";
+/// Returns the default name for the given `SectionType` as a [`StrRef`].
+/// 
+/// This is useful for deduplicating section name strings in memory,
+/// as the returned `StrRef` will point back to a single instance 
+/// of that section name string that can be shared across the system.
+pub fn section_name_str_ref(section_type: &SectionType) -> StrRef {
+    static TEXT             : Once<StrRef> = Once::new();
+    static RODATA           : Once<StrRef> = Once::new();
+    static DATA             : Once<StrRef> = Once::new();
+    static BSS              : Once<StrRef> = Once::new();
+    static TLS_DATA         : Once<StrRef> = Once::new();
+    static TLS_BSS          : Once<StrRef> = Once::new();
+    static GCC_EXCEPT_TABLE : Once<StrRef> = Once::new();
+    static EH_FRAME         : Once<StrRef> = Once::new();
 
-
-/// The possible types of sections that can be loaded from a crate object file.
-#[derive(Debug, Copy, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub enum SectionType {
-    /// A `text` section contains executable code, i.e., functions. 
-    Text,
-    /// An `rodata` section contains read-only data, i.e., constants.
-    Rodata,
-    /// A `data` section contains data that is both readable and writable, i.e., static variables. 
-    Data,
-    /// A `bss` section is just like a data section, but is automatically initialized to all zeroes at load time.
-    Bss,
-    /// A `.tdata` section is a read-only section that holds the initial data "image" 
-    /// for a thread-local storage (TLS) area.
-    TlsData,
-    /// A `.tbss` section is a read-only section that holds all-zero data for a thread-local storage (TLS) area.
-    /// This is is effectively an empty placeholder: the all-zero data section doesn't actually exist in memory.
-    TlsBss,
-    /// A `.gcc_except_table` section contains landing pads for exception handling,
-    /// comprising the LSDA (Language Specific Data Area),
-    /// which is effectively used to determine when we should stop the stack unwinding process
-    /// (e.g., "catching" an exception). 
-    /// 
-    /// Blog post from author of gold linker: <https://www.airs.com/blog/archives/464>
-    /// 
-    /// Mailing list discussion here: <https://gcc.gnu.org/ml/gcc-help/2010-09/msg00116.html>
-    /// 
-    /// Here is a sample repository parsing this section: <https://github.com/nest-leonlee/gcc_except_table>
-    /// 
-    GccExceptTable,
-    /// The `.eh_frame` section contains information about stack unwinding and destructor functions
-    /// that should be called when traversing up the stack for cleanup. 
-    /// 
-    /// Blog post from author of gold linker: <https://www.airs.com/blog/archives/460>
-    /// Some documentation here: <https://gcc.gnu.org/wiki/Dwarf2EHNewbiesHowto>
-    /// 
-    EhFrame,
+    let instance = match section_type {
+        SectionType::Text           => &TEXT,
+        SectionType::Rodata         => &RODATA,
+        SectionType::Data           => &DATA,
+        SectionType::Bss            => &BSS,
+        SectionType::TlsData        => &TLS_DATA,
+        SectionType::TlsBss         => &TLS_BSS,
+        SectionType::GccExceptTable => &GCC_EXCEPT_TABLE,
+        SectionType::EhFrame        => &EH_FRAME,
+    };
+    instance.call_once(|| StrRef::from(section_type.name())).clone()
 }
-impl SectionType {
-    /// Returns the name of this `SectionType` as a [`StrRef`].
-    /// 
-    /// This is useful for deduplicating section name strings in memory,
-    /// as the returned `StrRef` will point back to a single instance 
-    /// of that section name string that can be shared across the system.
-    pub fn name_str_ref(&self) -> StrRef {
-        static TEXT             : Once<StrRef> = Once::new();
-        static RODATA           : Once<StrRef> = Once::new();
-        static DATA             : Once<StrRef> = Once::new();
-        static BSS              : Once<StrRef> = Once::new();
-        static TLS_DATA         : Once<StrRef> = Once::new();
-        static TLS_BSS          : Once<StrRef> = Once::new();
-        static GCC_EXCEPT_TABLE : Once<StrRef> = Once::new();
-        static EH_FRAME         : Once<StrRef> = Once::new();
 
-        let init = || StrRef::from(self.name());
-
-        match self {
-            Self::Text           => TEXT.call_once(|| init()).clone(),
-            Self::Rodata         => RODATA.call_once(|| init()).clone(),
-            Self::Data           => DATA.call_once(|| init()).clone(),
-            Self::Bss            => BSS.call_once(|| init()).clone(),
-            Self::TlsData        => TLS_DATA.call_once(|| init()).clone(),
-            Self::TlsBss         => TLS_BSS.call_once(|| init()).clone(),
-            Self::GccExceptTable => GCC_EXCEPT_TABLE.call_once(|| init()).clone(),
-            Self::EhFrame        => EH_FRAME.call_once(|| init()).clone(),
-        }
-    }
-    
-    /// Returns the const `&str` name of this `SectionType`.
-    pub const fn name(&self) -> &'static str {
-        match self {
-            Self::Text           => TEXT_SECTION_NAME,
-            Self::Rodata         => RODATA_SECTION_NAME,
-            Self::Data           => DATA_SECTION_NAME, 
-            Self::Bss            => BSS_SECTION_NAME,
-            Self::TlsData        => TLS_DATA_SECTION_NAME,
-            Self::TlsBss         => TLS_BSS_SECTION_NAME,
-            Self::GccExceptTable => GCC_EXCEPT_TABLE_SECTION_NAME,
-            Self::EhFrame        => EH_FRAME_SECTION_NAME,
-        }
-    } 
-
-    /// Returns `true` if `Data` or `Bss`, otherwise `false`.
-    pub fn is_data_or_bss(&self) -> bool {
-        match self {
-            Self::Data | Self::Bss => true,
-            _ => false,
-        }
-    }
-}
 
 /// The parts of a `LoadedSection` that may be mutable, i.e., 
 /// only the parts that could change after a section is initially loaded and linked.
@@ -822,7 +765,7 @@ impl LoadedSection {
     pub fn section_name_without_hash(sec_name: &str) -> &str {
         sec_name.rfind(SECTION_HASH_DELIMITER)
             .and_then(|end| sec_name.get(0 .. (end + SECTION_HASH_DELIMITER.len())))
-            .unwrap_or_else(|| &sec_name)
+            .unwrap_or(&sec_name)
     }
 
 
@@ -873,6 +816,9 @@ impl LoadedSection {
     /// Returns a reference to the function that is formed from the underlying memory region,
     /// with a lifetime dependent upon the lifetime of this section.
     ///
+    /// # Safety
+    /// The type signature of `F` must match the type signature of the function.
+    ///
     /// # Locking
     /// Obtains the lock on this section's `MappedPages` object.
     ///
@@ -888,11 +834,11 @@ impl LoadedSection {
     /// ```
     /// type MyPrintFuncSignature = fn(&str) -> Result<(), &'static str>;
     /// let section = mod_mgmt::get_symbol_starting_with("my_crate::print::").upgrade().unwrap();
-    /// let print_func: &MyPrintFuncSignature = section.as_func().unwrap();
+    /// let print_func: &MyPrintFuncSignature = unsafe { section.as_func() }.unwrap();
     /// print_func("hello there");
     /// ```
     /// 
-    pub fn as_func<F>(&self) -> Result<&F, &'static str> {
+    pub unsafe fn as_func<F>(&self) -> Result<&F, &'static str> {
         if false {
             debug!("Requested LoadedSection {:#X?} as function {:?}", self, core::any::type_name::<F>());
         }
@@ -915,8 +861,10 @@ impl LoadedSection {
             return Err("requested type and offset would not fit within the MappedPages bounds");
         }
 
-        // SAFE: above, we check the section type, executability, and size bounds of its underlying MappedPages
-        //       and tie the lifetime of the returned function reference to this section's lifetime.
+        // SAFETY: We checked the section type, executability, and size bounds of the
+        // underlying MappedPages above. The lifetime of the returned function
+        // reference is tied to this section's lifetime. The caller guarantees
+        // that the function signature matches.
         Ok(unsafe { 
             core::mem::transmute(
                 &(mp.start_address().value() + self.mapped_pages_offset)
@@ -1070,58 +1018,67 @@ impl InternalDependency {
 }
 
 
-/// Write an actual relocation entry.
+/// Actually write the value of a relocation entry.
+/// 
 /// # Arguments
-/// * `relocation_entry`: the relocation entry from the ELF file that specifies the details of the relocation action to perform.
-/// * `target_sec_mapped_pages`: the `MappedPages` that covers the target section, i.e., the section where the relocation data will be written to.
-/// * `target_sec_mapped_pages_offset`: the offset into `target_sec_mapped_pages` where the target section is located.
-/// * `source_sec_vaddr`: the `VirtualAddress` of the source section of the relocation, i.e., the section that the `target_sec` depends on and "points" to.
+/// * `relocation_entry`: the relocation entry from the ELF file that specifies the details
+///    of the relocation action to perform.
+/// * `target_sec_slice`: a byte slice holding the entire contents of the target section,
+///    i.e., the section where the relocation data will be written to.
+/// * `target_sec_offset`: the offset into `target_sec_slice` where the target section's contents begin.
+/// * `source_sec_vaddr`: the `VirtualAddress` of the source section of the relocation, i.e.,
+///    the section that the `target_sec` depends on and "points" to.
 /// * `verbose_log`: whether to output verbose logging information about this relocation action.
 pub fn write_relocation(
     relocation_entry: RelocationEntry,
-    target_sec_mapped_pages: &mut MappedPages,
-    target_sec_mapped_pages_offset: usize,
+    target_sec_slice: &mut [u8],
+    target_sec_offset: usize,
     source_sec_vaddr: VirtualAddress,
     verbose_log: bool
 ) -> Result<(), &'static str> {
     // Calculate exactly where we should write the relocation data to.
-    let target_offset = target_sec_mapped_pages_offset + relocation_entry.offset;
+    let target_sec_offset = target_sec_offset + relocation_entry.offset;
 
-    // Perform the actual relocation data writing here.
-    // There is a great, succint table of relocation types here
-    // https://docs.rs/goblin/0.0.24/goblin/elf/reloc/index.html
+    // Perform the actual writing of relocation data here.
+    // There is a great, succint table of relocation types here:
+    // <https://docs.rs/goblin/0.0.24/goblin/elf/reloc/index.html>
     match relocation_entry.typ {
         R_X86_64_32 => {
-            let target_ref: &mut u32 = target_sec_mapped_pages.as_type_mut(target_offset)?;
-            let source_val = source_sec_vaddr.value().wrapping_add(relocation_entry.addend);
-            if verbose_log { trace!("                    target_ptr: {:#X}, source_val: {:#X} (from source_sec_vaddr {:#X})", target_ref as *mut _ as usize, source_val, source_sec_vaddr); }
-            *target_ref = source_val as u32;
+            let target_range = target_sec_offset .. (target_sec_offset + size_of::<u32>());
+            let target_ref = &mut target_sec_slice[target_range];
+            let source_val = source_sec_vaddr.value().wrapping_add(relocation_entry.addend) as u32;
+            if verbose_log { trace!("                    target_ptr: {:p}, source_val: {:#X} (from source_sec_vaddr {:#X})", target_ref.as_ptr(), source_val, source_sec_vaddr); }
+            target_ref.copy_from_slice(&source_val.to_ne_bytes());
         }
         R_X86_64_64 => {
-            let target_ref: &mut u64 = target_sec_mapped_pages.as_type_mut(target_offset)?;
-            let source_val = source_sec_vaddr.value().wrapping_add(relocation_entry.addend);
-            if verbose_log { trace!("                    target_ptr: {:#X}, source_val: {:#X} (from source_sec_vaddr {:#X})", target_ref as *mut _ as usize, source_val, source_sec_vaddr); }
-            *target_ref = source_val as u64;
+            let target_range = target_sec_offset .. (target_sec_offset + size_of::<u64>());
+            let target_ref = &mut target_sec_slice[target_range];
+            let source_val = source_sec_vaddr.value().wrapping_add(relocation_entry.addend) as u64;
+            if verbose_log { trace!("                    target_ptr: {:p}, source_val: {:#X} (from source_sec_vaddr {:#X})", target_ref.as_ptr(), source_val, source_sec_vaddr); }
+            target_ref.copy_from_slice(&source_val.to_ne_bytes());
         }
         R_X86_64_PC32 |
         R_X86_64_PLT32 => {
-            let target_ref: &mut u32 = target_sec_mapped_pages.as_type_mut(target_offset)?;
-            let source_val = source_sec_vaddr.value().wrapping_add(relocation_entry.addend).wrapping_sub(target_ref as *mut _ as usize);
-            if verbose_log { trace!("                    target_ptr: {:#X}, source_val: {:#X} (from source_sec_vaddr {:#X})", target_ref as *mut _ as usize, source_val, source_sec_vaddr); }
-            *target_ref = source_val as u32;
+            let target_range = target_sec_offset .. (target_sec_offset + size_of::<u32>());
+            let target_ref = &mut target_sec_slice[target_range];
+            let source_val = source_sec_vaddr.value().wrapping_add(relocation_entry.addend).wrapping_sub(target_ref.as_ptr() as usize) as u32;
+            if verbose_log { trace!("                    target_ptr: {:p}, source_val: {:#X} (from source_sec_vaddr {:#X})", target_ref.as_ptr(), source_val, source_sec_vaddr); }
+            target_ref.copy_from_slice(&source_val.to_ne_bytes());
         }
         R_X86_64_PC64 => {
-            let target_ref: &mut u64 = target_sec_mapped_pages.as_type_mut(target_offset)?;
-            let source_val = source_sec_vaddr.value().wrapping_add(relocation_entry.addend).wrapping_sub(target_ref as *mut _ as usize);
-            if verbose_log { trace!("                    target_ptr: {:#X}, source_val: {:#X} (from source_sec_vaddr {:#X})", target_ref as *mut _ as usize, source_val, source_sec_vaddr); }
-            *target_ref = source_val as u64;
+            let target_range = target_sec_offset .. (target_sec_offset + size_of::<u64>());
+            let target_ref = &mut target_sec_slice[target_range];
+            let source_val = source_sec_vaddr.value().wrapping_add(relocation_entry.addend).wrapping_sub(target_ref.as_ptr() as usize);
+            if verbose_log { trace!("                    target_ptr: {:p}, source_val: {:#X} (from source_sec_vaddr {:#X})", target_ref.as_ptr(), source_val, source_sec_vaddr); }
+            target_ref.copy_from_slice(&source_val.to_ne_bytes());
         }
         R_X86_64_TPOFF32 => {
-            let target_ref: &mut u32 = target_sec_mapped_pages.as_type_mut(target_offset)?;
+            let target_range = target_sec_offset .. (target_sec_offset + size_of::<u32>());
+            let target_ref = &mut target_sec_slice[target_range];
             let source_val = u32::try_from(source_sec_vaddr.value())
                 .map_err(|_| "BUG: TLS relocation (R_X86_64_TPOFF32) source section value (TLS offset) cannot fit in a `u32`")?;
-            if verbose_log { trace!("                    target_ptr: {:#X}, source_val: {:#X} (from source_sec_vaddr {:#X})", target_ref as *mut _ as usize, source_val, source_sec_vaddr); }
-            *target_ref = source_val;
+            if verbose_log { trace!("                    target_ptr: {:p}, source_val: {:#X} (from source_sec_vaddr {:#X})", target_ref.as_ptr(), source_val, source_sec_vaddr); }
+            target_ref.copy_from_slice(&source_val.to_ne_bytes());
         }
         // R_X86_64_GOTPCREL => { 
         //     unimplemented!(); // if we stop using the large code model, we need to create a Global Offset Table

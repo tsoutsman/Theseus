@@ -18,7 +18,7 @@ extern crate irq_safety;
 extern crate kernel_config;
 extern crate memory;
 extern crate pci; 
-extern crate pit_clock;
+extern crate pit_clock_basic;
 extern crate bit_field;
 extern crate interrupts;
 extern crate x86_64;
@@ -705,7 +705,7 @@ impl IxgbeNic {
 
         //wait 10 ms
         let wait_time = 10_000;
-        let _ =pit_clock::pit_wait(wait_time);
+        pit_clock_basic::pit_wait(wait_time)?;
 
         //disable flow control.. write 0 TO FCTTV, FCRTL, FCRTH, FCRTV and FCCFG
         for fcttv in regs2.fcttv.iter_mut() {
@@ -742,7 +742,7 @@ impl IxgbeNic {
 
         while Self::acquire_semaphore(regs3)? {
             //wait 10 ms
-            let _ =pit_clock::pit_wait(wait_time);
+            pit_clock_basic::pit_wait(wait_time)?;
         }
 
         // setup PHY and the link 
@@ -780,7 +780,7 @@ impl IxgbeNic {
         let mut tries = 0;
 
         while (regs2.links.read() & LINKS_SPEED_MASK == 0) && (tries < total_tries) {
-            let _ = pit_clock::pit_wait(wait_time);
+            let _ = pit_clock_basic::pit_wait(wait_time); // wait, or try again regardless
             tries += 1;
         }
     }
@@ -844,7 +844,7 @@ impl IxgbeNic {
             val.set_bits(0..4, rx_buffer_size_kbytes as u32);
             val.set_bits(8..13, BSIZEHEADER_0B);
             val.set_bits(25..27, DESCTYPE_ADV_1BUFFER);
-            val = val | DROP_ENABLE;
+            val |= DROP_ENABLE;
             rxq.srrctl.write(val);
 
             //enable the rx queue
@@ -1072,33 +1072,33 @@ impl IxgbeNic {
         // set the source ip address for the filter
         if let Some (addr) = source_ip {
             self.regs3.saqf[filter_num].write(((addr[3] as u32) << 24) | ((addr[2] as u32) << 16) | ((addr[1] as u32) << 8) | (addr[0] as u32));
-            filter_mask = filter_mask & !FTQF_SOURCE_ADDRESS_MASK;
+            filter_mask &= !FTQF_SOURCE_ADDRESS_MASK;
         };
 
         // set the destination ip address for the filter
         if let Some(addr) = dest_ip {
             self.regs3.daqf[filter_num].write(((addr[3] as u32) << 24) | ((addr[2] as u32) << 16) | ((addr[1] as u32) << 8) | (addr[0] as u32));
-            filter_mask = filter_mask & !FTQF_DEST_ADDRESS_MASK;
+            filter_mask &= !FTQF_DEST_ADDRESS_MASK;
         };        
 
         // set the source port for the filter    
         if let Some(port) = source_port {
             self.regs3.sdpqf[filter_num].write((port as u32) << SPDQF_SOURCE_SHIFT);
-            filter_mask = filter_mask & !FTQF_SOURCE_PORT_MASK;
+            filter_mask &= !FTQF_SOURCE_PORT_MASK;
         };   
 
         // set the destination port for the filter    
         if let Some(port) = dest_port {
             let port_val = self.regs3.sdpqf[filter_num].read();
             self.regs3.sdpqf[filter_num].write(port_val | (port as u32) << SPDQF_DEST_SHIFT);
-            filter_mask = filter_mask & !FTQF_DEST_PORT_MASK;
+            filter_mask &= !FTQF_DEST_PORT_MASK;
         };
 
         // set the filter protocol
         let mut filter_protocol = FilterProtocol::Other;
         if let Some(protocol) = protocol {
             filter_protocol = protocol;
-            filter_mask = filter_mask & !FTQF_PROTOCOL_MASK;
+            filter_mask &= !FTQF_PROTOCOL_MASK;
         };
 
         // write the parameters of the filter
@@ -1166,7 +1166,7 @@ impl IxgbeNic {
         // the lower 16 bits are for the 16 receive queue interrupts
         let mut val = 0;
         for i in 0..num_msi_vec_enabled {
-            val = val | (EIMS_INTERRUPT_ENABLE << i);
+            val |= EIMS_INTERRUPT_ENABLE << i;
         }
         regs.eims.write(val); 
         // debug!("EIMS: {:#X}", regs.eims.read());
@@ -1311,7 +1311,7 @@ pub fn rx_poll_mq(qid: usize, nic_id: PciLocation) -> Result<ReceivedFrame, &'st
 
 /// A helper function to send a test packet on a nic transmit queue (only for testing purposes).
 pub fn tx_send_mq(qid: usize, nic_id: PciLocation, packet: Option<TransmitBuffer>) -> Result<(), &'static str> {
-    let packet = packet.unwrap_or(test_packets::create_dhcp_test_packet()?);
+    let packet = packet.map(Ok).unwrap_or_else(|| test_packets::create_dhcp_test_packet())?;
     let nic_ref = get_ixgbe_nic(nic_id)?;
     let mut nic = nic_ref.lock();  
 
