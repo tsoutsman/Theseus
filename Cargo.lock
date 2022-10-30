@@ -4067,6 +4067,7 @@ dependencies = [
  "mod_mgmt",
  "mouse_data",
  "mpmc",
+ "mutex_sleep",
  "path",
  "scheduler",
  "shapes",

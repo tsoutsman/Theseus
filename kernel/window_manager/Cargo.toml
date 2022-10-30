@@ -52,7 +52,10 @@ path = "../spawn"
 path = "../../libs/mouse_data"
 
 [dependencies.path]
-path = "../../kernel/path"
+path = "../path"
+
+[dependencies.mutex_sleep]
+path = "../mutex_sleep"
 
 [lib]
 crate-type = ["rlib"]

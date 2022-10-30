@@ -80,11 +80,10 @@ const WINDOW_BORDER_COLOR_INNER: Color = Color::new(0x00CA6F1E);
 /// Window manager structure which maintains a list of windows and a mouse.
 pub struct WindowManager {
     /// those window currently not shown on screen
-    hide_list: VecDeque<Weak<Mutex<WindowInner>>>,
+    hide_list: VecDeque<WindowRef>,
     /// those window shown on screen that may overlapping each other
-    show_list: VecDeque<Weak<Mutex<WindowInner>>>,
-    /// the only active window, receiving all keyboard events (except for those remained for WM)
-    active: Weak<Mutex<WindowInner>>, // this one is not in show_list
+    show_list: VecDeque<WindowRef>,
+    active: WindowRef, // this one is not in show_list
     /// current mouse position
     mouse: Coord,
     /// If a window is being repositioned (e.g., by dragging it), this is the position of that window's border
@@ -99,6 +98,13 @@ pub struct WindowManager {
     pub final_fb: Framebuffer<AlphaPixel>,
 }
 
+#[derive(Clone, Default)]
+struct WindowRef {
+    /// the only active window, receiving all keyboard events (except for those remained for WM)
+    window: Weak<Mutex<WindowInner>>,
+    producer: Weak<Queue<Event>>,
+}
+
 impl WindowManager {
     /// Sets one window as active, push last active (if exists) to top of show_list. if `refresh` is `true`, will then refresh the window's area.
     /// Returns whether this window is the first active window in the manager.
@@ -107,10 +113,11 @@ impl WindowManager {
     pub fn set_active(
         &mut self,
         inner_ref: &Arc<Mutex<WindowInner>>,
+        producer_ref: &Arc<Queue<Event>>,
         refresh: bool,
     ) -> Result<bool, &'static str> {
         // if it is currently actived, just return
-        let first_active = match self.active.upgrade() {
+        let first_active = match self.active.window.upgrade() {
             Some(current_active) => {
                 if Arc::ptr_eq(&(current_active), inner_ref) {
                     return Ok(true); // do nothing
@@ -137,13 +144,16 @@ impl WindowManager {
             }
             None => {}
         }
-        self.active = Arc::downgrade(inner_ref);
+        self.active = WindowRef {
+            window: Arc::downgrade(inner_ref),
+            producer: Arc::downgrade(producer_ref),
+        };
         let area = {
             let window = inner_ref.lock();
             let top_left = window.get_position();
             let (width, height) = window.get_size();          
             Rectangle {
-                top_left: top_left,
+                top_left,
                 bottom_right: top_left + (width as isize, height as isize)
             }
         };
@@ -157,7 +167,7 @@ impl WindowManager {
     fn is_window_in_show_list(&mut self, window: &Arc<Mutex<WindowInner>>) -> Option<usize> {
         let mut i = 0_usize;
         for item in self.show_list.iter() {
-            if let Some(item_ptr) = item.upgrade() {
+            if let Some(item_ptr) = item.window.upgrade() {
                 if Arc::ptr_eq(&(item_ptr), window) {
                     return Some(i);
                 }
@@ -171,7 +181,7 @@ impl WindowManager {
     fn is_window_in_hide_list(&mut self, window: &Arc<Mutex<WindowInner>>) -> Option<usize> {
         let mut i = 0_usize;
         for item in self.hide_list.iter() {
-            if let Some(item_ptr) = item.upgrade() {
+            if let Some(item_ptr) = item.window.upgrade() {
                 if Arc::ptr_eq(&(item_ptr), window) {
                     return Some(i);
                 }
@@ -197,7 +207,7 @@ impl WindowManager {
             }
         );
 
-        if let Some(current_active) = self.active.upgrade() {
+        if let Some(current_active) = self.active.window.upgrade() {
             if Arc::ptr_eq(&current_active, inner_ref) {
                 self.refresh_bottom_windows(area, false)?;
                 if let Some(window) = self.show_list.remove(0) {
@@ -205,7 +215,7 @@ impl WindowManager {
                 } else if let Some(window) = self.hide_list.remove(0) {
                     self.active = window;
                 } else {
-                    self.active = Weak::new(); // delete reference
+                    self.active = WindowRef::default(); // delete reference
                 }
                 return Ok(());
             }
@@ -238,18 +248,18 @@ impl WindowManager {
 
         // list of windows to be updated
         let mut window_ref_list = Vec::new();
-        for window in &self.hide_list {
-            if let Some(window_ref) = window.upgrade() {
+        for r in &self.hide_list {
+            if let Some(window_ref) = r.window.upgrade() {
                 window_ref_list.push(window_ref);
             }
         }
-        for window in &self.show_list {
-            if let Some(window_ref) = window.upgrade() {
+        for r in &self.show_list {
+            if let Some(window_ref) = r.window.upgrade() {
                 window_ref_list.push(window_ref);
             }
         }
         if active {
-            if let Some(window_ref) = self.active.upgrade() {
+            if let Some(window_ref) = self.active.window.upgrade() {
                 window_ref_list.push(window_ref)
             }
         }
@@ -291,18 +301,18 @@ impl WindowManager {
     ) -> Result<(), &'static str> {
         // reference of windows
         let mut window_ref_list = Vec::new();
-        for window in &self.hide_list {
-            if let Some(window_ref) = window.upgrade() {
+        for r in &self.hide_list {
+            if let Some(window_ref) = r.window.upgrade() {
                 window_ref_list.push(window_ref);
             }
         }
-        for window in &self.show_list {
-            if let Some(window_ref) = window.upgrade() {
+        for r in &self.show_list {
+            if let Some(window_ref) = r.window.upgrade() {
                 window_ref_list.push(window_ref);
             }
         }
 
-        if let Some(window_ref) = self.active.upgrade() {
+        if let Some(window_ref) = self.active.window.upgrade() {
             window_ref_list.push(window_ref)
         }
 
@@ -322,7 +332,7 @@ impl WindowManager {
 
     /// Refresh the part in `bounding_box` of the active window. `bounding_box` is a region relative to the top-left of the screen. Refresh the whole screen if the bounding box is None.
     pub fn refresh_active_window(&mut self, bounding_box: Option<Rectangle>) -> Result<(), &'static str> {
-        if let Some(window_ref) = self.active.upgrade() {
+        if let Some(window_ref) = self.active.window.upgrade() {
             let window = window_ref.lock();
             let buffer_update = FramebufferUpdates {
                 src_framebuffer: window.framebuffer(),
@@ -336,9 +346,11 @@ impl WindowManager {
     
     /// Passes the given keyboard event to the currently active window.
     fn pass_keyboard_event_to_window(&self, key_event: KeyEvent) -> Result<(), &'static str> {
-        let active_window = self.active.upgrade().ok_or("no window was set as active to receive a keyboard event")?;
-        active_window.lock().send_event(Event::new_keyboard_event(key_event))
+        log::error!("start");
+        let producer = self.active.producer.upgrade().ok_or("no window was set as active to receive a keyboard event")?;
+        producer.push(Event::new_keyboard_event(key_event))
             .map_err(|_e| "Failed to enqueue the keyboard event; window event queue was full.")?;
+        log::error!("finish");
         Ok(())
     }
 
@@ -364,8 +376,10 @@ impl WindowManager {
         //               not just necessarily the active one. (For example, scroll wheel events can be sent to non-active windows).
 
 
+        // FIXME Will this lead to deadlock
+
         // first check the active one
-        if let Some(current_active) = self.active.upgrade() {
+        if let Some(current_active) = self.active.window.upgrade() {
             let current_active_win = current_active.lock();
             let current_coordinate = current_active_win.get_position();
             if current_active_win.contains(*coordinate - current_coordinate) || match current_active_win.moving {
@@ -374,7 +388,11 @@ impl WindowManager {
             }{
                 event.coordinate = *coordinate - current_coordinate;
                 // debug!("pass to active: {}, {}", event.x, event.y);
-                current_active_win.send_event(Event::MousePositionEvent(event))
+                self.active
+                    .producer
+                    .upgrade()
+                    .ok_or("active window but no active producer")?
+                    .push(Event::MousePositionEvent(event))
                     .map_err(|_e| "Failed to enqueue the mouse event; window event queue was full.")?;
                 return Ok(());
             }
@@ -383,13 +401,16 @@ impl WindowManager {
         // TODO FIXME: (kevinaboos): the logic below here is actually incorrect -- it could send mouse events to an invisible window below others.
 
         // then check show_list
-        for i in 0..self.show_list.len() {
-            if let Some(now_inner_mutex) = self.show_list[i].upgrade() {
+        for r in self.show_list.iter() {
+            if let Some(now_inner_mutex) = r.window.upgrade() {
                 let now_inner = now_inner_mutex.lock();
                 let current_coordinate = now_inner.get_position();
                 if now_inner.contains(*coordinate - current_coordinate) {
                     event.coordinate = *coordinate - current_coordinate;
-                    now_inner.send_event(Event::MousePositionEvent(event))
+                    r.producer
+                        .upgrade()
+                        .ok_or("window allocated but no producer")?
+                        .push(Event::MousePositionEvent(event))
                         .map_err(|_e| "Failed to enqueue the mouse event; window event queue was full.")?;
                     return Ok(());
                 }
@@ -465,7 +486,7 @@ impl WindowManager {
 
     /// take active window's base position and current mouse, move the window with delta
     pub fn move_active_window(&mut self) -> Result<(), &'static str> {
-        if let Some(current_active) = self.active.upgrade() {
+        if let Some(current_active) = self.active.window.upgrade() {
             let border = Rectangle { 
                 top_left: Coord::new(0, 0), 
                 bottom_right: Coord::new(0, 0) 
@@ -571,7 +592,7 @@ impl WindowManager {
             (m.x as isize, m.y as isize)
         };
         
-        if let Some(current_active) = self.active.upgrade() {
+        if let Some(current_active) = self.active.window.upgrade() {
             let (is_draw, border_start, border_end) = {
                 let current_active_win = current_active.lock();
                 match current_active_win.moving {
@@ -606,7 +627,7 @@ impl WindowManager {
 
     /// Returns true if the given `window` is the currently active window.
     pub fn is_active(&self, window: &Arc<Mutex<WindowInner>>) -> bool {
-        self.active.upgrade()
+        self.active.window.upgrade()
             .map(|active| Arc::ptr_eq(&active, window))
             .unwrap_or(false)
     }
@@ -638,7 +659,7 @@ pub fn init() -> Result<(Queue<Event>, Queue<Event>), &'static str> {
     let window_manager = WindowManager {
         hide_list: VecDeque::new(),
         show_list: VecDeque::new(),
-        active: Weak::new(),
+        active: WindowRef::default(),
         mouse: center,
         repositioned_border: None,
         bottom_fb: bottom_framebuffer,
@@ -743,7 +764,9 @@ fn keyboard_handle_application(key_input: KeyEvent) -> Result<(), &'static str> 
     
     // "Super + Arrow" will resize and move windows to the specified half of the screen (left, right, top, or bottom)
     if key_input.modifiers.is_super_key() && key_input.action == KeyAction::Pressed {
+        log::error!("start 1");
         let screen_dimensions = win_mgr.lock().get_screen_size();
+        log::error!("finish 1");
         let (width, height) = (screen_dimensions.0 as isize, screen_dimensions.1 as isize);
         let new_position: Option<Rectangle> = match key_input.keycode {
             Keycode::Left => Some(Rectangle {
@@ -766,10 +789,14 @@ fn keyboard_handle_application(key_input: KeyEvent) -> Result<(), &'static str> 
         };
         
         if let Some(position) = new_position {
+            log::error!("start 2");
             let mut wm = win_mgr.lock();
-            if let Some(active_window) = wm.active.upgrade() {
+            log::error!("finish 2");
+            if let Some(active_window) = wm.active.window.upgrade() {
                 debug!("window_manager: resizing active window to {:?}", new_position);
+                log::error!("start 3");
                 active_window.lock().resize(position)?;
+                log::error!("finish 3");
 
                 // force refresh the entire screen for now
                 // TODO: perform a proper screen refresh here: only refresh the area that contained the active_window's old bounds.
@@ -792,7 +819,9 @@ fn keyboard_handle_application(key_input: KeyEvent) -> Result<(), &'static str> 
         let new_app_namespace = mod_mgmt::create_application_namespace(None)?;
         let shell_objfile = new_app_namespace.dir().get_file_starting_with("shell-")
             .ok_or("Couldn't find shell application file to run upon Ctrl+Alt+T")?;
+        log::error!("start 4");
         let path = Path::new(shell_objfile.lock().get_absolute_path());
+        log::error!("finish 4");
         spawn::new_application_task_builder(path, Some(new_app_namespace))?
             .name(format!("shell"))
             .spawn()?;
@@ -802,12 +831,14 @@ fn keyboard_handle_application(key_input: KeyEvent) -> Result<(), &'static str> 
     }
 
     // Any keyboard event unhandled above should be passed to the active window.
+    log::error!("start 5");
     if let Err(_e) = win_mgr.lock().pass_keyboard_event_to_window(key_input) {
         warn!("window_manager: failed to pass keyboard event to active window. Error: {:?}", _e);
         // If no window is currently active, then something might be potentially wrong, 
         // but we can likely recover in the future when another window becomes active.
         // Thus, we don't need to return a hard error here. 
     }
+    log::error!("finish 5");
     Ok(())
 }
 

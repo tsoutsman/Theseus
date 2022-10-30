@@ -90,6 +90,13 @@ pub struct Window {
     /// 
     /// This is wrapped in an `Arc` such that the window manager can hold `Weak` references to it.
     inner: Arc<Mutex<WindowInner>>,
+    /// The producer side of this window's event queue.
+    ///
+    /// Entities that want to send events to this window (or the application that owns this window)
+    /// should push events onto this queue.
+    ///
+    /// This is wrapped in an `Arc` such that the window manager can hold `Weak` references to it.
+    event_producer: Arc<Queue<Event>>,
     /// The event queue
     event_consumer: Queue<Event>,
     /// last mouse position event, used to judge click and press-moving event
@@ -134,9 +141,10 @@ impl Window {
         let event_consumer = Queue::with_capacity(100);
         let event_producer = event_consumer.clone();
 
-        let window_inner = WindowInner::new(coordinate, framebuffer, event_producer);
+        let window_inner = WindowInner::new(coordinate, framebuffer, event_producer.clone());
         let mut window = Window {
             inner: Arc::new(Mutex::new(window_inner)),
+            event_producer: Arc::new(event_producer),
             event_consumer,
             last_mouse_position_event: MousePositionEvent::default(),
             last_is_active: true, // new window is now set as the active window by default 
@@ -157,7 +165,7 @@ impl Window {
         };
 
         let mut wm = wm_ref.lock();
-        wm.set_active(&window.inner, false)?; 
+        wm.set_active(&window.inner, &window.event_producer, false)?; 
 
         // Currently, refresh the whole screen instead of just the new window's bounds
         // wm.refresh_bottom_windows(Some(window_bounding_box), true)?;
@@ -296,7 +304,7 @@ impl Window {
 
         let mut wm = wm_ref.lock();
         if need_to_set_active {
-            wm.set_active(&self.inner, true)?;
+            wm.set_active(&self.inner, &self.event_producer, true)?; 
         }
 
         if need_refresh_three_button {
