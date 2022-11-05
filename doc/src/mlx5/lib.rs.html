@@ -689,7 +689,6 @@
 <span id="683">683</span>
 <span id="684">684</span>
 <span id="685">685</span>
-<span id="686">686</span>
 </pre><pre class="rust"><code><span class="doccomment">//! A mlx5 driver for a ConnectX-5 100GbE Network Interface Card.</span>
 <span class="doccomment">//! </span>
 <span class="doccomment">//! Currently the following steps are completed </span>
@@ -722,7 +721,7 @@
 <span class="kw">use</span> <span class="ident">spin::Once</span>; 
 <span class="kw">use</span> <span class="ident">alloc</span>::{
     <span class="ident">vec::Vec</span>,
-    <span class="ident">boxed::Box</span>
+    <span class="ident">boxed::Box</span>,
 };
 <span class="kw">use</span> <span class="ident">irq_safety::MutexIrqSafe</span>;
 <span class="kw">use</span> <span class="ident">memory</span>::{<span class="ident">PhysicalAddress</span>, <span class="ident">MappedPages</span>, <span class="ident">create_contiguous_mapping</span>};
@@ -1363,8 +1362,7 @@
 
     <span class="doccomment">/// Adds a packet to be sent to the transmit queue and returns once it is sent.</span>
     <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">send</span>(<span class="kw-2">&amp;mut</span> <span class="self">self</span>, <span class="ident">buffer</span>: <span class="ident">TransmitBuffer</span>) -&gt; <span class="prelude-ty">Result</span><span class="op">&lt;</span>(), <span class="kw-2">&amp;</span><span class="lifetime">&#39;static</span> <span class="ident">str</span><span class="op">&gt;</span> {
-        <span class="kw">let</span> <span class="ident">packet_length</span> <span class="op">=</span> <span class="ident">buffer</span>.<span class="ident">length</span>;
-        <span class="kw">let</span> <span class="ident">wqe_counter</span> <span class="op">=</span> <span class="self">self</span>.<span class="ident">send_queue</span>.<span class="ident">send</span>(<span class="ident">buffer</span>.<span class="ident">phys_addr</span>, <span class="ident">buffer</span>.<span class="ident">as_slice</span>(<span class="number">0</span>, <span class="ident">packet_length</span> <span class="kw">as</span> <span class="ident">usize</span>)<span class="question-mark">?</span>);
+        <span class="kw">let</span> <span class="ident">wqe_counter</span> <span class="op">=</span> <span class="self">self</span>.<span class="ident">send_queue</span>.<span class="ident">send</span>(<span class="ident">buffer</span>.<span class="ident">phys_addr</span>, <span class="ident">buffer</span>.<span class="ident">as_slice</span>());
         <span class="comment">// self.send_completion_queue.wqe_posted(wqe_counter);</span>
         <span class="self">self</span>.<span class="ident">send_completion_queue</span>.<span class="ident">check_packet_transmission</span>(<span class="number">0</span>, <span class="ident">wqe_counter</span>);
         <span class="self">self</span>.<span class="ident">send_completion_queue</span>.<span class="ident">dump</span>();

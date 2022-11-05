@@ -304,6 +304,10 @@
 <span id="298">298</span>
 <span id="299">299</span>
 <span id="300">300</span>
+<span id="301">301</span>
+<span id="302">302</span>
+<span id="303">303</span>
+<span id="304">304</span>
 </pre><pre class="rust"><code><span class="attribute">#![<span class="ident">no_std</span>]</span>
 <span class="attribute">#![<span class="ident">feature</span>(<span class="ident">trait_alias</span>)]</span>
 
@@ -331,6 +335,7 @@
 <span class="kw">extern</span> <span class="kw">crate</span> <span class="ident">core2</span>;
 <span class="attribute">#[<span class="ident">macro_use</span>]</span> <span class="kw">extern</span> <span class="kw">crate</span> <span class="ident">derive_more</span>;
 <span class="kw">extern</span> <span class="kw">crate</span> <span class="ident">mlx5</span>;
+<span class="kw">extern</span> <span class="kw">crate</span> <span class="ident">net</span>;
 
 <span class="kw">use</span> <span class="ident">core::convert::TryFrom</span>;
 <span class="kw">use</span> <span class="ident">mpmc::Queue</span>;
@@ -440,9 +445,12 @@
         <span class="kw">if</span> <span class="ident">dev</span>.<span class="ident">class</span> <span class="op">==</span> <span class="number">0x02</span> <span class="op">&amp;&amp;</span> <span class="ident">dev</span>.<span class="ident">subclass</span> <span class="op">==</span> <span class="number">0x00</span> {
             <span class="kw">if</span> <span class="ident">dev</span>.<span class="ident">vendor_id</span> <span class="op">==</span> <span class="ident">e1000::INTEL_VEND</span> <span class="op">&amp;&amp;</span> <span class="ident">dev</span>.<span class="ident">device_id</span> <span class="op">==</span> <span class="ident">e1000::E1000_DEV</span> {
                 <span class="macro">info!</span>(<span class="string">&quot;e1000 PCI device found at: {:?}&quot;</span>, <span class="ident">dev</span>.<span class="ident">location</span>);
-                <span class="kw">let</span> <span class="ident">e1000_nic_ref</span> <span class="op">=</span> <span class="ident">e1000::E1000Nic::init</span>(<span class="ident">dev</span>)<span class="question-mark">?</span>;
-                <span class="kw">let</span> <span class="ident">e1000_interface</span> <span class="op">=</span> <span class="ident">EthernetNetworkInterface::new_ipv4_interface</span>(<span class="ident">e1000_nic_ref</span>, <span class="ident">DEFAULT_LOCAL_IP</span>, <span class="kw-2">&amp;</span><span class="ident">DEFAULT_GATEWAY_IP</span>)<span class="question-mark">?</span>;
+                <span class="kw">let</span> <span class="ident">nic</span> <span class="op">=</span> <span class="ident">e1000::E1000Nic::init</span>(<span class="ident">dev</span>)<span class="question-mark">?</span>;
+                <span class="ident">net::register_device</span>(<span class="ident">nic</span>);
+
+                <span class="kw">let</span> <span class="ident">e1000_interface</span> <span class="op">=</span> <span class="ident">EthernetNetworkInterface::new_ipv4_interface</span>(<span class="ident">nic</span>, <span class="ident">DEFAULT_LOCAL_IP</span>, <span class="kw-2">&amp;</span><span class="ident">DEFAULT_GATEWAY_IP</span>)<span class="question-mark">?</span>;
                 <span class="ident">add_to_network_interfaces</span>(<span class="ident">e1000_interface</span>);
+                
                 <span class="kw">continue</span>;
             }
             <span class="kw">if</span> <span class="ident">dev</span>.<span class="ident">vendor_id</span> <span class="op">==</span> <span class="ident">ixgbe::INTEL_VEND</span> <span class="op">&amp;&amp;</span> <span class="ident">dev</span>.<span class="ident">device_id</span> <span class="op">==</span> <span class="ident">ixgbe::INTEL_82599</span> {

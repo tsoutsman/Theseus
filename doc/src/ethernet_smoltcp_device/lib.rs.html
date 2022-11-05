@@ -273,16 +273,6 @@
 <span id="267">267</span>
 <span id="268">268</span>
 <span id="269">269</span>
-<span id="270">270</span>
-<span id="271">271</span>
-<span id="272">272</span>
-<span id="273">273</span>
-<span id="274">274</span>
-<span id="275">275</span>
-<span id="276">276</span>
-<span id="277">277</span>
-<span id="278">278</span>
-<span id="279">279</span>
 </pre><pre class="rust"><code><span class="doccomment">//! This crate implements an interface/glue layer between our ethernet drivers</span>
 <span class="doccomment">//! and the smoltcp network stack.</span>
 <span class="attribute">#![<span class="ident">no_std</span>]</span>
@@ -477,14 +467,7 @@
             <span class="macro">error!</span>(<span class="string">&quot;EthernetDevice::receive(): WARNING: Ethernet frame consists of {} ReceiveBuffers, we currently only handle a single-buffer frame, so this may not work correctly!&quot;</span>,  <span class="ident">received_frame</span>.<span class="number">0</span>.<span class="ident">len</span>());
         }
 
-        <span class="kw">let</span> <span class="ident">first_buf_len</span> <span class="op">=</span> <span class="ident">received_frame</span>.<span class="number">0</span>[<span class="number">0</span>].<span class="ident">length</span>;
-        <span class="kw">let</span> <span class="ident">rxbuf_byte_slice</span> <span class="op">=</span> <span class="ident">BoxRefMut::new</span>(<span class="ident">Box::new</span>(<span class="ident">received_frame</span>))
-            .<span class="ident">try_map_mut</span>(<span class="op">|</span><span class="ident">rxframe</span><span class="op">|</span> <span class="ident">rxframe</span>.<span class="number">0</span>[<span class="number">0</span>].<span class="ident">as_slice_mut</span>::<span class="op">&lt;</span><span class="ident">u8</span><span class="op">&gt;</span>(<span class="number">0</span>, <span class="ident">first_buf_len</span> <span class="kw">as</span> <span class="ident">usize</span>))
-            .<span class="ident">map_err</span>(<span class="op">|</span><span class="ident">e</span><span class="op">|</span> {
-                <span class="macro">error!</span>(<span class="string">&quot;EthernetDevice::receive(): couldn&#39;t convert receive buffer of length {} into byte slice, error {:?}&quot;</span>, <span class="ident">first_buf_len</span>, <span class="ident">e</span>);
-                <span class="ident">e</span>
-            })
-            .<span class="ident">ok</span>()<span class="question-mark">?</span>;
+        <span class="kw">let</span> <span class="ident">rxbuf_byte_slice</span> <span class="op">=</span> <span class="ident">BoxRefMut::new</span>(<span class="ident">Box::new</span>(<span class="ident">received_frame</span>)).<span class="ident">map_mut</span>(<span class="op">|</span><span class="ident">rxframe</span><span class="op">|</span> <span class="ident">rxframe</span>.<span class="number">0</span>[<span class="number">0</span>].<span class="ident">as_slice_mut</span>());
 
         <span class="comment">// Just create and return a pair of (receive token, transmit token), </span>
         <span class="comment">// the actual rx buffer handling is done in the RxToken::consume() function</span>
@@ -533,10 +516,7 @@
         })<span class="question-mark">?</span>;
 
         <span class="kw">let</span> <span class="ident">closure_retval</span> <span class="op">=</span> {
-            <span class="kw">let</span> <span class="ident">txbuf_byte_slice</span> <span class="op">=</span> <span class="ident">txbuf</span>.<span class="ident">as_slice_mut</span>::<span class="op">&lt;</span><span class="ident">u8</span><span class="op">&gt;</span>(<span class="number">0</span>, <span class="ident">len</span>).<span class="ident">map_err</span>(<span class="op">|</span><span class="ident">e</span><span class="op">|</span> {
-                <span class="macro">error!</span>(<span class="string">&quot;EthernetDevice::transmit(): couldn&#39;t convert TransmitBuffer of length {} into byte slice, error {:?}&quot;</span>, <span class="ident">len</span>, <span class="ident">e</span>);
-                <span class="ident">smoltcp::Error::Exhausted</span>
-            })<span class="question-mark">?</span>;
+            <span class="kw">let</span> <span class="ident">txbuf_byte_slice</span> <span class="op">=</span> <span class="ident">txbuf</span>.<span class="ident">as_slice_mut</span>();
             <span class="ident">f</span>(<span class="ident">txbuf_byte_slice</span>)<span class="question-mark">?</span>
         };
         <span class="self">self</span>.<span class="ident">nic_ref</span>.<span class="ident">lock</span>()

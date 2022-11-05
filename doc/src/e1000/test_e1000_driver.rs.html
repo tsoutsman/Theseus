@@ -155,12 +155,12 @@
         <span class="number">0x37</span>, <span class="number">0x04</span>, <span class="number">0x01</span>, <span class="number">0x03</span>, <span class="number">0x06</span>, <span class="number">0x2a</span>, <span class="number">0xff</span>, <span class="number">0x00</span>, <span class="number">0x00</span>, <span class="number">0x00</span>, <span class="number">0x00</span>, <span class="number">0x00</span>, <span class="number">0x00</span>, <span class="number">0x00</span>,
     ];
     <span class="kw">let</span> <span class="kw-2">mut</span> <span class="ident">transmit_buffer</span> <span class="op">=</span> <span class="ident">TransmitBuffer::new</span>(<span class="ident">packet</span>.<span class="ident">len</span>() <span class="kw">as</span> <span class="ident">u16</span>)<span class="question-mark">?</span>;
-    { 
-        <span class="kw">let</span> <span class="ident">buffer</span>: <span class="kw-2">&amp;mut</span> [<span class="ident">u8</span>] <span class="op">=</span> <span class="ident">transmit_buffer</span>.<span class="ident">as_slice_mut</span>(<span class="number">0</span>, <span class="number">314</span>)<span class="question-mark">?</span>;
+    {
+        <span class="kw">let</span> <span class="ident">buffer</span>: <span class="kw-2">&amp;mut</span> [<span class="ident">u8</span>] <span class="op">=</span> <span class="ident">transmit_buffer</span>.<span class="ident">as_slice_mut</span>();
         <span class="ident">buffer</span>.<span class="ident">copy_from_slice</span>(<span class="kw-2">&amp;</span><span class="ident">packet</span>);
     }
-    <span class="kw">let</span> <span class="kw-2">mut</span> <span class="ident">e1000_nc</span> <span class="op">=</span> <span class="ident">E1000_NIC</span>.<span class="ident">get</span>().<span class="ident">ok_or</span>(<span class="string">&quot;e1000 NIC hasn&#39;t been initialized yet&quot;</span>)<span class="question-mark">?</span>.<span class="ident">lock</span>();
-    <span class="ident">e1000_nc</span>.<span class="ident">send_packet</span>(<span class="ident">transmit_buffer</span>)
+    <span class="kw">let</span> <span class="kw-2">mut</span> <span class="ident">e1000_nic</span> <span class="op">=</span> <span class="ident">E1000_NIC</span>.<span class="ident">get</span>().<span class="ident">ok_or</span>(<span class="string">&quot;e1000 NIC hasn&#39;t been initialized yet&quot;</span>)<span class="question-mark">?</span>.<span class="ident">lock</span>();
+    <span class="ident">e1000_nic</span>.<span class="ident">send_packet</span>(<span class="ident">transmit_buffer</span>)
 }
 </code></pre></div>
 </section></div></main><div id="rustdoc-vars" data-root-path="../../" data-current-crate="e1000" data-themes="ayu,dark,light" data-resource-suffix="" data-rustdoc-version="1.64.0-nightly (f8588549c 2022-07-18)" ></div>

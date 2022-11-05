@@ -85,6 +85,7 @@ sourcesIndex["multiple_heaps"] = {"name":"","files":["lib.rs"]};
 sourcesIndex["mutex_preemption"] = {"name":"","files":["lib.rs","mutex_preempt.rs","rwlock_preempt.rs"]};
 sourcesIndex["mutex_sleep"] = {"name":"","files":["lib.rs","mutex.rs","rwlock.rs"]};
 sourcesIndex["nano_core"] = {"name":"","files":["lib.rs","libm.rs","stack_smash_protection.rs"]};
+sourcesIndex["net"] = {"name":"","files":["device.rs","error.rs","interface.rs","lib.rs"]};
 sourcesIndex["network_interface_card"] = {"name":"","files":["lib.rs"]};
 sourcesIndex["network_manager"] = {"name":"","files":["lib.rs"]};
 sourcesIndex["nic_buffers"] = {"name":"","files":["lib.rs"]};

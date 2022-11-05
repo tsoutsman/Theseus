@@ -123,6 +123,36 @@
 <span id="117">117</span>
 <span id="118">118</span>
 <span id="119">119</span>
+<span id="120">120</span>
+<span id="121">121</span>
+<span id="122">122</span>
+<span id="123">123</span>
+<span id="124">124</span>
+<span id="125">125</span>
+<span id="126">126</span>
+<span id="127">127</span>
+<span id="128">128</span>
+<span id="129">129</span>
+<span id="130">130</span>
+<span id="131">131</span>
+<span id="132">132</span>
+<span id="133">133</span>
+<span id="134">134</span>
+<span id="135">135</span>
+<span id="136">136</span>
+<span id="137">137</span>
+<span id="138">138</span>
+<span id="139">139</span>
+<span id="140">140</span>
+<span id="141">141</span>
+<span id="142">142</span>
+<span id="143">143</span>
+<span id="144">144</span>
+<span id="145">145</span>
+<span id="146">146</span>
+<span id="147">147</span>
+<span id="148">148</span>
+<span id="149">149</span>
 </pre><pre class="rust"><code><span class="doccomment">//! Defines buffers that are used to send and receive packets.</span>
 
 <span class="attribute">#![<span class="ident">no_std</span>]</span>
@@ -154,17 +184,26 @@
             <span class="ident">EntryFlags::WRITABLE</span> <span class="op">|</span> <span class="ident">EntryFlags::NO_CACHE</span> <span class="op">|</span> <span class="ident">EntryFlags::NO_EXECUTE</span>,
         )<span class="question-mark">?</span>;
         <span class="prelude-val">Ok</span>(<span class="ident">TransmitBuffer</span> {
-            <span class="ident">mp</span>: <span class="ident">mp</span>,
+            <span class="ident">mp</span>,
             <span class="ident">phys_addr</span>: <span class="ident">starting_phys_addr</span>,
             <span class="ident">length</span>: <span class="ident">size_in_bytes</span>,
         })
     }
 
-    <span class="comment">// / Send this `TransmitBuffer` out through the given `NetworkInterfaceCard`. </span>
-    <span class="comment">// / This function consumes this `TransmitBuffer`.</span>
-    <span class="comment">// pub fn send&lt;N: NetworkInterfaceCard&gt;(self, nic: &amp;mut N) -&gt; Result&lt;(), &amp;&#39;static str&gt; {</span>
-    <span class="comment">//     nic.send_packet(self)</span>
-    <span class="comment">// }</span>
+    <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">as_slice</span>(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="kw-2">&amp;</span>[<span class="ident">u8</span>] {
+        <span class="comment">// We checked that the mapped pages are &gt;= to self.length during initialisation.</span>
+        <span class="comment">// There can be no overflows since length is a u16, nor can there be alignment</span>
+        <span class="comment">// issues because we are operating on u8s.</span>
+        <span class="self">self</span>.<span class="ident">mp</span>.<span class="ident">as_slice</span>(<span class="number">0</span>, <span class="self">self</span>.<span class="ident">length</span>.<span class="ident">into</span>()).<span class="ident">unwrap</span>() 
+    }
+    
+    <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">as_slice_mut</span>(<span class="kw-2">&amp;mut</span> <span class="self">self</span>) -&gt; <span class="kw-2">&amp;mut</span> [<span class="ident">u8</span>] {
+        <span class="comment">// We checked that the mapped pages are &gt;= to self.length during initialisation</span>
+        <span class="comment">// and that they are writable. There can be no overflows since length is</span>
+        <span class="comment">// a u16, nor can there be alignment issues because we are operating on</span>
+        <span class="comment">// u8s.</span>
+        <span class="self">self</span>.<span class="ident">mp</span>.<span class="ident">as_slice_mut</span>(<span class="number">0</span>, <span class="self">self</span>.<span class="ident">length</span>.<span class="ident">into</span>()).<span class="ident">unwrap</span>()
+    }
 }
 
 <span class="kw">impl</span> <span class="ident">Deref</span> <span class="kw">for</span> <span class="ident">TransmitBuffer</span> {
@@ -193,13 +232,34 @@
 <span class="kw">impl</span> <span class="ident">ReceiveBuffer</span> {
     <span class="doccomment">/// Creates a new ReceiveBuffer with the given `MappedPages`, `PhysicalAddress`, and `length`. </span>
     <span class="doccomment">/// When this ReceiveBuffer object is dropped, it will be returned to the given `pool`.</span>
-    <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">new</span>(<span class="ident">mp</span>: <span class="ident">MappedPages</span>, <span class="ident">phys_addr</span>: <span class="ident">PhysicalAddress</span>, <span class="ident">length</span>: <span class="ident">u16</span>, <span class="ident">pool</span>: <span class="kw-2">&amp;</span><span class="lifetime">&#39;static</span> <span class="ident">mpmc::Queue</span><span class="op">&lt;</span><span class="ident">ReceiveBuffer</span><span class="op">&gt;</span>) -&gt; <span class="ident">ReceiveBuffer</span> {
-        <span class="ident">ReceiveBuffer</span> {
-            <span class="ident">mp</span>: <span class="ident">mp</span>,
-            <span class="ident">phys_addr</span>: <span class="ident">phys_addr</span>,
-            <span class="ident">length</span>: <span class="ident">length</span>,
-            <span class="ident">pool</span>: <span class="ident">pool</span>,
+    <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">new</span>(<span class="ident">mp</span>: <span class="ident">MappedPages</span>, <span class="ident">phys_addr</span>: <span class="ident">PhysicalAddress</span>, <span class="ident">length</span>: <span class="ident">u16</span>, <span class="ident">pool</span>: <span class="kw-2">&amp;</span><span class="lifetime">&#39;static</span> <span class="ident">mpmc::Queue</span><span class="op">&lt;</span><span class="ident">ReceiveBuffer</span><span class="op">&gt;</span>) -&gt; <span class="prelude-ty">Result</span><span class="op">&lt;</span><span class="ident">ReceiveBuffer</span>, <span class="kw-2">&amp;</span><span class="lifetime">&#39;static</span> <span class="ident">str</span><span class="op">&gt;</span> {
+        <span class="kw">if</span> <span class="ident">usize::from</span>(<span class="ident">length</span>) <span class="op">&gt;</span> <span class="ident">mp</span>.<span class="ident">size_in_bytes</span>() {
+            <span class="prelude-val">Err</span>(<span class="string">&quot;mapped pages too small&quot;</span>)
+        } <span class="kw">else</span> <span class="kw">if</span> <span class="op">!</span><span class="ident">mp</span>.<span class="ident">flags</span>().<span class="ident">is_writable</span>() {
+            <span class="prelude-val">Err</span>(<span class="string">&quot;mapped pages aren&#39;t writable&quot;</span>)
+        } <span class="kw">else</span> {
+            <span class="prelude-val">Ok</span>(<span class="ident">ReceiveBuffer</span> {
+                <span class="ident">mp</span>,
+                <span class="ident">phys_addr</span>,
+                <span class="ident">length</span>,
+                <span class="ident">pool</span>,
+            })
         }
+    }
+
+    <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">as_slice</span>(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="kw-2">&amp;</span>[<span class="ident">u8</span>] {
+        <span class="comment">// We checked that the mapped pages are &gt;= to self.length during initialisation.</span>
+        <span class="comment">// There can be no overflows since length is a u16, nor can there be alignment</span>
+        <span class="comment">// issues because we are operating on u8s.</span>
+        <span class="self">self</span>.<span class="ident">mp</span>.<span class="ident">as_slice</span>(<span class="number">0</span>, <span class="ident">usize::from</span>(<span class="self">self</span>.<span class="ident">length</span>)).<span class="ident">unwrap</span>() 
+    }
+    
+    <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">as_slice_mut</span>(<span class="kw-2">&amp;mut</span> <span class="self">self</span>) -&gt; <span class="kw-2">&amp;mut</span> [<span class="ident">u8</span>] {
+        <span class="comment">// We checked that the mapped pages are &gt;= to self.length during initialisation</span>
+        <span class="comment">// and that they are writable. There can be no overflows since length is</span>
+        <span class="comment">// a u16, nor can there be alignment issues because we are operating on</span>
+        <span class="comment">// u8s.</span>
+        <span class="self">self</span>.<span class="ident">mp</span>.<span class="ident">as_slice_mut</span>(<span class="number">0</span>, <span class="ident">usize::from</span>(<span class="self">self</span>.<span class="ident">length</span>)).<span class="ident">unwrap</span>()
     }
 }
 <span class="kw">impl</span> <span class="ident">Deref</span> <span class="kw">for</span> <span class="ident">ReceiveBuffer</span> {

@@ -488,7 +488,7 @@
                 .<span class="ident">ok_or</span>(<span class="string">&quot;Couldn&#39;t obtain a ReceiveBuffer from the pool&quot;</span>)
                 .<span class="ident">or_else</span>(<span class="op">|</span><span class="ident">_e</span><span class="op">|</span> {
                     <span class="ident">create_contiguous_mapping</span>(<span class="ident">buffer_size</span> <span class="kw">as</span> <span class="ident">usize</span>, <span class="ident">NIC_MAPPING_FLAGS</span>)
-                        .<span class="ident">map</span>(<span class="op">|</span>(<span class="ident">buf_mapped</span>, <span class="ident">buf_paddr</span>)<span class="op">|</span> 
+                        .<span class="ident">and_then</span>(<span class="op">|</span>(<span class="ident">buf_mapped</span>, <span class="ident">buf_paddr</span>)<span class="op">|</span>
                             <span class="ident">ReceiveBuffer::new</span>(<span class="ident">buf_mapped</span>, <span class="ident">buf_paddr</span>, <span class="ident">buffer_size</span> <span class="kw">as</span> <span class="ident">u16</span>, <span class="ident">mem_pool</span>)
                         )
                 })<span class="question-mark">?</span>;
