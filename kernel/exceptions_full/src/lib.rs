@@ -89,7 +89,7 @@ macro_rules! println_both {
 /// However, stack traces / backtraces work, so we are correctly traversing call stacks with exception frames.
 /// 
 #[inline(never)]
-fn kill_and_halt(
+pub fn kill_and_halt(
     exception_number: u8,
     stack_frame: &InterruptStackFrame,
     error_code: Option<ErrorCode>,

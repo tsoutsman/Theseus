@@ -4,7 +4,6 @@
 //! Originally based on Phil Opp's blog_os. 
 
 #![no_std]
-#![feature(abi_x86_interrupt)]
 #![feature(ptr_internals)]
 #![feature(unboxed_closures)]
 #![feature(result_option_inspect)]

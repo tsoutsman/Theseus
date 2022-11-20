@@ -13,7 +13,6 @@ mod mapper;
 mod table;
 #[cfg(mapper_spillful)]
 pub mod table;
-mod demand;
 
 
 pub use page_table_entry::PageTableEntry;

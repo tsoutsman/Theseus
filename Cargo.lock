@@ -700,6 +700,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "demand_paging"
+version = "0.1.0"
+dependencies = [
+ "exceptions_full",
+ "hashbrown",
+ "irq_safety",
+ "lazy_static",
+ "memory",
+ "x86_64",
+]
+
+[[package]]
 name = "deps"
 version = "0.1.0"
 dependencies = [
