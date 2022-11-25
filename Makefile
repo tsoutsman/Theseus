@@ -964,10 +964,3 @@ endif
 	@sudo cp -vf $(iso) /var/lib/tftpboot/theseus/
 	@sudo systemctl restart isc-dhcp-server 
 	@sudo systemctl restart tftpd-hpa
-
-# TODO: What is this !?
-.PHONY: uefi
-
-uefi: export override FEATURES += --features nano_core/uefi
-uefi: $(nano_core_binary)
-	cargo r --release -Z bindeps --manifest-path $(ROOT_DIR)/tools/uefi_runner/Cargo.toml -- $(nano_core_binary) $(NANO_CORE_BUILD_DIR)/nano_core.efi
