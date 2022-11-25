@@ -178,7 +178,7 @@ mod build_info {
 // We don't actually use them, and they should not be accessed or dereferenced,
 // because they are merely values, not addresses.
 #[allow(dead_code)]
-extern "C" {
+extern {
     static initial_bsp_stack_guard_page: usize;
     static initial_bsp_stack_bottom: usize;
     static initial_bsp_stack_top: usize;

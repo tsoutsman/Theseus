@@ -9,6 +9,25 @@
 
 %include "defines.asm"
 
+; Debug builds require a larger initial boot stack,
+; because their code is larger and less optimized.
+%ifndef INITIAL_STACK_SIZE
+%ifdef DEBUG
+	INITIAL_STACK_SIZE equ 32 ; 32 pages for debug builds
+%else
+	INITIAL_STACK_SIZE equ 16 ; 16 pages for release builds
+%endif
+%endif
+; Debug builds require a larger initial boot stack,
+; because their code is larger and less optimized.
+%ifndef INITIAL_STACK_SIZE
+%ifdef DEBUG
+	INITIAL_STACK_SIZE equ 32 ; 32 pages for debug builds
+%else
+	INITIAL_STACK_SIZE equ 16 ; 16 pages for release builds
+%endif
+%endif
+
 global _start
 
 ; Section must have the permissions of .text
@@ -30,7 +49,7 @@ _start:
 	; to the multiboot2 information structure in the `ebx` register. Here we
 	; mov it to `edi` so that rust can take it as a register. Because of this
 	; we cannot clobber the edi register in any code before nano_core_start
-	; mov edi, ebx
+	mov edi, ebx
 
 	call check_multiboot
 	call check_cpuid
