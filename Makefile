@@ -176,6 +176,7 @@ iso: $(iso)
 ### This target builds an .iso OS image from all of the compiled crates.
 $(iso): clean-old-build build extra_files copy_kernel $(bootloader)
 
+
 ## Copy the kernel boot image into the proper ISOFILES directory.
 ## Should be invoked after building all Theseus kernel/application crates.
 copy_kernel:
@@ -895,8 +896,8 @@ wasmtime: run
 
 ### builds and runs Theseus in QEMU
 run: $(iso) 
-	qemu-system-x86_64 $(QEMU_FLAGS)
-
+	qemu-system-x86_64 $(QEMU_FLAGS) \
+		-monitor telnet:localhost:1235,server,nowait
 
 ### builds and runs Theseus in QEMU, but pauses execution until a GDB instance is connected.
 run_pause: $(iso)

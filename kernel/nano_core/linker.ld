@@ -100,9 +100,4 @@ SECTIONS {
 		*(.got.plt)
 	}
 	*/
-
-	.data.rel.ro ALIGN(4K) : AT(ADDR(.data.rel.ro) - KERNEL_OFFSET)
-	{
-		*(.data.rel.ro.local*) *(.data.rel.ro .data.rel.ro.*)
-	}
 }
