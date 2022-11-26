@@ -62,3 +62,8 @@ path = "../memory_initialization"
 [features]
 bios = ["dep:vga_buffer"]
 uefi = ["dep:bootloader_api"]
+
+[lib]
+# staticlib is required to build a self-contained, fully-linked .a file 
+# that we can jump to from the bootloader.
+crate-type = ["staticlib"]  

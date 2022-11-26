@@ -9,12 +9,23 @@
 
 %include "defines.asm"
 
-global _start
+; Debug builds require a larger initial boot stack,
+; because their code is larger and less optimized.
+%ifndef INITIAL_STACK_SIZE
+%ifdef DEBUG
+	INITIAL_STACK_SIZE equ 32 ; 32 pages for debug builds
+%else 
+	INITIAL_STACK_SIZE equ 16 ; 16 pages for release builds
+%endif 
+%endif
+
+
+global start
 
 ; Section must have the permissions of .text
 section .init.text32 progbits alloc exec nowrite
 bits 32 ;We are still in protected mode
-_start:
+start:
 	; The bootloader has loaded us into 32-bit protected mode. 
 	; Interrupts are disabled. Paging is disabled.
 
@@ -285,7 +296,7 @@ long_mode_start:
 	jmp rax
 
 section .text
-extern rust_entry
+extern nano_core_start
 extern eputs
 extern puts
 
@@ -341,9 +352,9 @@ start_high:
 
 	; First argument: the higher half address to the multiboot2 information structure
 	add rdi, KERNEL_OFFSET
-	; Second argument: the top of the initial double fault stack
+	; Second argument: the higher half address to the multiboot2 information structure
 	mov rsi, initial_double_fault_stack_top
-	call rust_entry
+	call nano_core_start
 
 	; rust main returned, print `OS returned!`
 	mov rdi, strings.os_return
@@ -442,5 +453,4 @@ initial_bsp_stack_bottom:
 global initial_bsp_stack_top
 initial_bsp_stack_top:
 	resb 4096
-global initial_double_fault_stack_top
 initial_double_fault_stack_top:
