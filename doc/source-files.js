@@ -35,7 +35,6 @@ var sourcesIndex = JSON.parse('{\
 "displayable":["",[],["lib.rs"]],\
 "dmar":["",[],["device_scope.rs","drhd.rs","lib.rs"]],\
 "e1000":["",[],["lib.rs","regs.rs","test_e1000_driver.rs"]],\
-"entryflags_x86_64":["",[],["lib.rs"]],\
 "environment":["",[],["lib.rs"]],\
 "ethernet_smoltcp_device":["",[],["lib.rs"]],\
 "event_types":["",[],["lib.rs"]],\
@@ -111,6 +110,8 @@ var sourcesIndex = JSON.parse('{\
 "preemption":["",[],["lib.rs"]],\
 "print":["",[],["lib.rs"]],\
 "ps2":["",[],["lib.rs"]],\
+"ps2_controller":["",[],["lib.rs"]],\
+"pte_flags":["",[],["lib.rs","pte_flags_aarch64.rs","pte_flags_x86_64.rs"]],\
 "random":["",[],["lib.rs"]],\
 "rendezvous":["",[],["lib.rs"]],\
 "root":["",[],["lib.rs"]],\
