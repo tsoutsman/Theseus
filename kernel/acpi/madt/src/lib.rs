@@ -8,7 +8,7 @@ extern crate alloc;
 use core::mem::size_of;
 use alloc::{boxed::Box, format};
 use log::{error, warn, trace};
-use memory::{MappedPages, PageTable, PhysicalAddress}; 
+use memory::{MappedPages, PageTable, PhysicalAddress, Active}; 
 use apic::{LocalApic, get_bsp_id, LapicInitError, get_my_apic_id};
 use sdt::Sdt;
 use acpi_table::{AcpiSignature, AcpiTables};
@@ -87,7 +87,7 @@ impl<'t> Madt<'t> {
     /// # Important Note
     /// This should only be called once from the initial bootstrap processor 
     /// (the first core to run).
-    pub fn bsp_init(&self, page_table: &mut PageTable) -> Result<(), &'static str> {
+    pub fn bsp_init(&self, page_table: &mut PageTable<Active>) -> Result<(), &'static str> {
         handle_ioapic_entries(self.iter(), page_table)?;
         handle_bsp_lapic_entry(self.iter(), page_table)?;
         Ok(())
@@ -307,7 +307,7 @@ const_assert_eq!(core::mem::align_of::<MadtLocalApicAddressOverride>(), 1);
 /// Handles the BSP's (bootstrap processor, the first core to boot) entry in the given MADT iterator.
 /// This should be the first function invoked to initialize the BSP information, 
 /// and should come before any other entries in the MADT are handled.
-fn handle_bsp_lapic_entry(madt_iter: MadtIter, page_table: &mut PageTable) -> Result<(), &'static str> {
+fn handle_bsp_lapic_entry(madt_iter: MadtIter, page_table: &mut PageTable<Active>) -> Result<(), &'static str> {
     use pic::IRQ_BASE_OFFSET;
 
     for madt_entry in madt_iter.clone() {
@@ -383,7 +383,7 @@ fn handle_bsp_lapic_entry(madt_iter: MadtIter, page_table: &mut PageTable) -> Re
 
 /// Handles the IOAPIC entries in the given MADT iterator 
 /// by creating IoApic instances for them and initializing them appropriately.
-fn handle_ioapic_entries(madt_iter: MadtIter, page_table: &mut PageTable) -> Result<(), &'static str> {
+fn handle_ioapic_entries(madt_iter: MadtIter, page_table: &mut PageTable<Active>) -> Result<(), &'static str> {
     for madt_entry in madt_iter {
         if let MadtEntry::IoApic(ioa) = madt_entry {
             ioapic::IoApic::new(page_table, ioa.id, PhysicalAddress::new_canonical(ioa.address as usize), ioa.gsi_base)?;

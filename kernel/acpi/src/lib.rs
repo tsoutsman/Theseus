@@ -20,7 +20,7 @@ extern crate iommu;
 
 use alloc::vec::Vec;
 use spin::Mutex;
-use memory::{PageTable, PhysicalAddress};
+use memory::{PageTable, PhysicalAddress, Active};
 use rsdp::Rsdp;
 use acpi_table::AcpiTables;
 use acpi_table_handler::acpi_table_handler;
@@ -37,7 +37,7 @@ pub fn get_acpi_tables() -> &'static Mutex<AcpiTables> {
 }
 
 /// Parses the system's ACPI tables 
-pub fn init(rsdp_address: Option<PhysicalAddress>, page_table: &mut PageTable) -> Result<(), &'static str> {
+pub fn init(rsdp_address: Option<PhysicalAddress>, page_table: &mut PageTable<Active>) -> Result<(), &'static str> {
     // The first step is to search for the RSDP (Root System Descriptor Pointer),
     // which contains the physical address of the RSDT/XSDG (Root/Extended System Descriptor Table).
     let rsdp = rsdp_address

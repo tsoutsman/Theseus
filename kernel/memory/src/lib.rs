@@ -21,6 +21,7 @@ mod paging;
 pub use self::paging::{
     PageTable, Mapper, Mutability, Mutable, Immutable,
     MappedPages, BorrowedMappedPages, BorrowedSliceMappedPages,
+    Active, Inactive,
 };
 
 pub use memory_structs::{Frame, Page, FrameRange, PageRange, VirtualAddress, PhysicalAddress};
@@ -69,7 +70,7 @@ pub fn get_kernel_mmi_ref() -> Option<&'static MmiRef> {
 #[derive(Debug)]
 pub struct MemoryManagementInfo {
     /// the PageTable that should be switched to when this Task is switched to.
-    pub page_table: PageTable,
+    pub page_table: PageTable<Active>,
     
     /// a list of additional virtual-mapped Pages that have the same lifetime as this MMI
     /// and are thus owned by this MMI, but is not all-inclusive (e.g., Stacks are excluded).
@@ -142,7 +143,7 @@ pub fn set_broadcast_tlb_shootdown_cb(func: fn(PageRange)) {
 pub fn init(
     boot_info: &impl BootInformation
 ) -> Result<(
-    PageTable,
+    PageTable<Active>,
     NoDrop<MappedPages>,
     NoDrop<MappedPages>,
     NoDrop<MappedPages>,
@@ -224,7 +225,7 @@ pub fn init(
 ///    which must not be dropped until all AP (additional CPUs) are fully booted,
 ///    but *should* be dropped before starting the first user application. 
 pub fn init_post_heap(
-    page_table: PageTable,
+    page_table: PageTable<Active>,
     mut higher_half_mapped_pages: [Option<NoDrop<MappedPages>>; 32],
     mut identity_mapped_pages: [Option<NoDrop<MappedPages>>; 32],
     heap_mapped_pages: MappedPages

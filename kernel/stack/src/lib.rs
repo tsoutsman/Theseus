@@ -13,7 +13,7 @@ extern crate page_allocator;
 use core::ops::{Deref, DerefMut};
 use kernel_config::memory::PAGE_SIZE;
 use memory_structs::VirtualAddress;
-use memory::{PteFlags, MappedPages, Mapper};
+use memory::{PteFlags, MappedPages, Mapper, Active};
 use page_allocator::AllocatedPages;
 
 
@@ -25,7 +25,7 @@ use page_allocator::AllocatedPages;
 /// Returns the newly-allocated stack and a VMA to represent its mapping.
 pub fn alloc_stack(
     size_in_pages: usize,
-    page_table: &mut Mapper, 
+    page_table: &mut Mapper<Active>, 
 ) -> Option<Stack> {
     // Allocate enough pages for an additional guard page. 
     let pages = page_allocator::allocate_pages(size_in_pages + 1)?;
@@ -38,7 +38,7 @@ pub fn alloc_stack(
 /// the guard page followed by the actual stack pages to be mapped.
 fn inner_alloc_stack(
     pages: AllocatedPages,
-    page_table: &mut Mapper, 
+    page_table: &mut Mapper<Active>, 
 ) -> Option<Stack> {
     let start_of_stack_pages = *pages.start() + 1; 
     let (guard_page, stack_pages) = pages.split(start_of_stack_pages).ok()?;

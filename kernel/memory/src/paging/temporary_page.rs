@@ -11,7 +11,7 @@ use core::mem::ManuallyDrop;
 use log::error;
 use super::{
     AllocatedPages, AllocatedFrames, PageTable, MappedPages, VirtualAddress,
-    table::{Table, Level1},
+    table::{Table, Level1}, Active,
 };
 use pte_flags::PteFlagsArch;
 use kernel_config::memory::{TEMPORARY_PAGE_VIRT_ADDR, PAGE_SIZE};
@@ -28,7 +28,7 @@ use owned_borrowed_trait::Owned;
 /// it should be cleaned up (reclaimed) using [`TemporaryPage::unmap_into_parts()`].
 
 pub struct TemporaryPage {
-    mapped_page: MappedPages,
+    pub(crate) mapped_page: MappedPages,
     /// `ManuallyDrop` is required here in order to prevent this `AllocatedFrames` 
     /// from being dropped twice: once when unmapping the above `mapped_page`, and
     /// once when dropping this `TemporaryPage`.
@@ -50,7 +50,7 @@ impl TemporaryPage {
     pub fn create_and_map_table_frame(
         mut page: Option<AllocatedPages>,
         frame: AllocatedFrames,
-        page_table: &mut PageTable,
+        page_table: &mut PageTable<Active>,
     ) -> Result<TemporaryPage, &'static str> {
         let mut vaddr = VirtualAddress::new_canonical(TEMPORARY_PAGE_VIRT_ADDR);
         while page.is_none() && vaddr.value() != 0 {
@@ -86,7 +86,7 @@ impl TemporaryPage {
     /// Call this to clean up a `TemporaryPage` instead of just letting it be dropped.
     ///
     /// A simple wrapper around [`MappedPages::unmap_into_parts()`].
-    pub fn unmap_into_parts(mut self, page_table: &mut PageTable) -> Result<(AllocatedPages, Option<AllocatedFrames>), &'static str> {
+    pub fn unmap_into_parts(mut self, page_table: &mut PageTable<Active>) -> Result<(AllocatedPages, Option<AllocatedFrames>), &'static str> {
         let mp = core::mem::replace(&mut self.mapped_page, MappedPages::empty());
         mp.unmap_into_parts(page_table).map_err(|e_mp| {
             error!("TemporaryPage::unmap_into_parts(): failed to unmap internal {:?}", e_mp);

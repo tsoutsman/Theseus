@@ -19,7 +19,7 @@ use core::{
     slice,
 };
 use log::{error, warn, debug, trace};
-use crate::{BROADCAST_TLB_SHOOTDOWN_FUNC, VirtualAddress, PhysicalAddress, Page, Frame, FrameRange, AllocatedPages, AllocatedFrames}; 
+use crate::{BROADCAST_TLB_SHOOTDOWN_FUNC, VirtualAddress, PhysicalAddress, Page, Frame, FrameRange, AllocatedPages, AllocatedFrames, PageTable}; 
 use crate::paging::{
     get_current_p4,
     PageRange,
@@ -28,7 +28,7 @@ use crate::paging::{
 use pte_flags::PteFlagsArch;
 use spin::Once;
 use kernel_config::memory::{PAGE_SIZE, ENTRIES_PER_PAGE_TABLE};
-use super::tlb_flush_virt_addr;
+use super::{tlb_flush_virt_addr, Active, Status, Inactive, TemporaryPage};
 use zerocopy::FromBytes;
 use page_table_entry::UnmapResult;
 use owned_borrowed_trait::{OwnedOrBorrowed, Owned, Borrowed};
@@ -52,30 +52,34 @@ use owned_borrowed_trait::{OwnedOrBorrowed, Owned, Borrowed};
 pub(super) static INTO_ALLOCATED_FRAMES_FUNC: Once<fn(FrameRange) -> AllocatedFrames> = Once::new();
 
 
-pub struct Mapper {
-    p4: Unique<Table<Level4>>,
+pub struct Mapper<T>
+where
+    T: Status
+{
+    pub(crate) status: T,
     /// The Frame contaning the top-level P4 page table.
     pub(crate) target_p4: Frame,
 }
 
-impl Mapper {
-    pub(crate) fn from_current() -> Mapper {
-        Self::with_p4_frame(get_current_p4())
-    }
-
-    pub(crate) fn with_p4_frame(p4: Frame) -> Mapper {
-        Mapper { 
-            p4: Unique::new(P4).unwrap(), // cannot panic because we know the P4 value is valid
-            target_p4: p4,
+impl Mapper<Active> {
+    pub(crate) fn from_current() -> Self {
+        Self {
+            status: Active,
+            target_p4: get_current_p4(),
         }
     }
+}
 
+impl<T> Mapper<T>
+where
+    T: Status
+{
     pub(crate) fn p4(&self) -> &Table<Level4> {
-        unsafe { self.p4.as_ref() }
+        unsafe { self.status.virtual_address().as_ref().unwrap() }
     }
 
     pub(crate) fn p4_mut(&mut self) -> &mut Table<Level4> {
-        unsafe { self.p4.as_mut() }
+        unsafe { (self.status.virtual_address() as *mut Table<Level4>).as_mut().unwrap() }
     }
 
     /// Dumps all page table entries at all four page table levels for the given `VirtualAddress`, 
@@ -174,8 +178,10 @@ impl Mapper {
         Frames: OwnedOrBorrowed<AllocatedFrames>,
         Flags: Into<PteFlagsArch>,
     {
+        log::info!("a");
         let frames = frames.into_inner();
         let flags = flags.into();
+        log::info!("b");
         let higher_level_flags = flags.adjust_for_higher_level_pte();
 
         // Only the lowest-level P1 entry can be considered exclusive, and only when
@@ -183,9 +189,11 @@ impl Mapper {
         let actual_flags = flags
             .valid(true)
             .exclusive(Frames::OWNED);
+        log::info!("c");
 
         let pages_count = pages.size_in_pages();
         let frames_count = frames.borrow().size_in_frames();
+        log::info!("d");
         if pages_count != frames_count {
             error!("map_allocated_pages_to(): pages {:?} count {} must equal frames {:?} count {}!", 
                 pages, pages_count, frames.borrow(), frames_count
@@ -193,8 +201,10 @@ impl Mapper {
             return Err("map_allocated_pages_to(): page count must equal frame count");
         }
 
+        log::info!("e");
         // iterate over pages and frames in lockstep
         for (page, frame) in pages.deref().clone().into_iter().zip(frames.borrow().into_iter()) {
+            log::info!("f");
             let p3 = self.p4_mut().next_table_create(page.p4_index(), higher_level_flags);
             let p2 = p3.next_table_create(page.p3_index(), higher_level_flags);
             let p1 = p2.next_table_create(page.p2_index(), higher_level_flags);
@@ -284,7 +294,10 @@ impl Mapper {
 
 // This implementation block contains a hacky function for non-bijective mappings 
 // that shouldn't be exposed to most other OS components, especially applications.
-impl Mapper {
+impl<T> Mapper<T>
+where
+    T: Status
+{
     /// An unsafe escape hatch that allows one to map the given virtual `AllocatedPages` 
     /// to the given range of physical `frames`. 
     ///
@@ -454,7 +467,7 @@ impl MappedPages {
     /// as this object, but at a completely new memory region.
     pub fn deep_copy<F: Into<PteFlagsArch>>(
         &self,
-        active_table_mapper: &mut Mapper,
+        active_table_mapper: &mut Mapper<Active>,
         new_flags: Option<F>,
     ) -> Result<MappedPages, &'static str> {
         warn!("MappedPages::deep_copy() has not been adequately tested yet.");
@@ -495,7 +508,7 @@ impl MappedPages {
     /// would violate safety.
     pub fn remap<F: Into<PteFlagsArch>>(
         &mut self,
-        active_table_mapper: &mut Mapper,
+        active_table_mapper: &mut Mapper<Active>,
         new_flags: F,
     ) -> Result<(), &'static str> {
         if self.size_in_pages() == 0 { return Ok(()); }
@@ -538,7 +551,7 @@ impl MappedPages {
     /// Note that only the first contiguous range of `AllocatedFrames` will be returned, if any were unmapped.
     /// All other non-contiguous ranges will be auto-dropped and deallocated.
     /// This is due to how frame deallocation works.
-    pub fn unmap_into_parts(mut self, active_table_mapper: &mut Mapper) -> Result<(AllocatedPages, Option<AllocatedFrames>), Self> {
+    pub fn unmap_into_parts(mut self, active_table_mapper: &mut Mapper<Active>) -> Result<(AllocatedPages, Option<AllocatedFrames>), Self> {
         match self.unmap(active_table_mapper) {
             Ok(first_frames) => {
                 let pages = mem::replace(&mut self.pages, AllocatedPages::empty());
@@ -570,7 +583,7 @@ impl MappedPages {
     ///       We could then use `mem::replace(&mut self, MappedPages::empty())` in the drop handler 
     ///       to obtain ownership of `self`, which would allow us to transfer ownership of the dropped `MappedPages` here.
     ///
-    fn unmap(&mut self, active_table_mapper: &mut Mapper) -> Result<Option<AllocatedFrames>, &'static str> {
+    fn unmap(&mut self, active_table_mapper: &mut Mapper<Active>) -> Result<Option<AllocatedFrames>, &'static str> {
         if self.size_in_pages() == 0 { return Ok(None); }
 
         if active_table_mapper.target_p4 != self.page_table_p4 {

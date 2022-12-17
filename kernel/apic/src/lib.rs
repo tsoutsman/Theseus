@@ -8,7 +8,7 @@ use spin::Once;
 use raw_cpuid::CpuId;
 use msr::*;
 use irq_safety::RwLockIrqSafe;
-use memory::{PageTable, PhysicalAddress, PteFlags, MappedPages, allocate_pages, allocate_frames_at, AllocatedFrames, BorrowedMappedPages, Mutable};
+use memory::{PageTable, PhysicalAddress, PteFlags, MappedPages, allocate_pages, allocate_frames_at, AllocatedFrames, BorrowedMappedPages, Mutable, Active};
 use kernel_config::time::CONFIG_TIMESLICE_PERIOD_MICROSECONDS;
 use atomic_linked_list::atomic_map::AtomicMap;
 use crossbeam_utils::atomic::AtomicCell;
@@ -136,7 +136,7 @@ pub fn init() {
 
 
 /// Map the physical frames containing the APIC's MMIO registers into the given `page_table`.
-fn map_apic(page_table: &mut PageTable) -> Result<MappedPages, &'static str> {
+fn map_apic(page_table: &mut PageTable<Active>) -> Result<MappedPages, &'static str> {
     static APIC_FRAME: Once<AllocatedFrames> = Once::new();
 
     let frame = if let Some(apic_frame) = APIC_FRAME.get() {
@@ -368,7 +368,7 @@ impl LocalApic {
     /// This MUST be invoked from each CPU itself when it is booting up, i.e.,
     /// the BSP cannot invoke this for other APs.
     pub fn init(
-        page_table: &mut PageTable,
+        page_table: &mut PageTable<Active>,
         processor_id: u8,
         expected_apic_id: Option<u8>,
         should_be_bsp: bool,

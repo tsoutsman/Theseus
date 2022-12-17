@@ -10,7 +10,7 @@ extern crate atomic_linked_list;
 use spin::{Mutex, MutexGuard};
 use volatile::{Volatile, WriteOnly};
 use zerocopy::FromBytes;
-use memory::{PageTable, PhysicalAddress, PteFlags, allocate_pages, allocate_frames_at, BorrowedMappedPages, Mutable};
+use memory::{PageTable, PhysicalAddress, PteFlags, allocate_pages, allocate_frames_at, BorrowedMappedPages, Mutable, Active};
 use atomic_linked_list::atomic_map::AtomicMap;
 
 
@@ -70,7 +70,7 @@ pub struct IoApic {
 impl IoApic {
     /// Creates a new IoApic struct from the given `id`, `PhysicalAddress`, and `gsi_base`,
     /// and then adds it to the system-wide list of all IOAPICs.
-    pub fn new(page_table: &mut PageTable, id: u8, phys_addr: PhysicalAddress, gsi_base: u32) -> Result<(), &'static str> {
+    pub fn new(page_table: &mut PageTable<Active>, id: u8, phys_addr: PhysicalAddress, gsi_base: u32) -> Result<(), &'static str> {
         let new_page = allocate_pages(1).ok_or("IoApic::new(): couldn't allocate_pages!")?;
         let frame = allocate_frames_at(phys_addr, 1).map_err(|_e| "Couldn't allocate physical frame for IOAPIC")?;
         let ioapic_mapped_page = page_table.map_allocated_pages_to(

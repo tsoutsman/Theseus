@@ -14,7 +14,7 @@ extern crate sdt;
 extern crate zerocopy;
 
 use alloc::collections::BTreeMap;
-use memory::{MappedPages, allocate_pages, allocate_frames_at, PageTable, PteFlags, PhysicalAddress, Frame, FrameRange};
+use memory::{MappedPages, allocate_pages, allocate_frames_at, PageTable, PteFlags, PhysicalAddress, Frame, FrameRange, Active};
 use sdt::Sdt;
 use core::ops::Add;
 use zerocopy::FromBytes;
@@ -67,7 +67,7 @@ impl AcpiTables {
     /// 
     /// Returns a tuple describing the SDT discovered at the given `sdt_phys_addr`: 
     /// the `AcpiSignature` and the total length of the table.
-    pub fn map_new_table(&mut self, sdt_phys_addr: PhysicalAddress, page_table: &mut PageTable) -> Result<(AcpiSignature, usize), &'static str> {
+    pub fn map_new_table(&mut self, sdt_phys_addr: PhysicalAddress, page_table: &mut PageTable<Active>) -> Result<(AcpiSignature, usize), &'static str> {
 
         // First, we map the SDT header so we can obtain its `length` field, 
         // which determines whether we need to map additional pages. 

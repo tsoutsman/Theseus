@@ -6,7 +6,7 @@ use log::debug;
 use volatile::{Volatile, ReadOnly};
 use zerocopy::FromBytes;
 use spin::{Once, RwLock, RwLockReadGuard, RwLockWriteGuard};
-use memory::{allocate_pages, allocate_frames_by_bytes_at, PageTable, PhysicalAddress, PteFlags, BorrowedMappedPages, Mutable};
+use memory::{allocate_pages, allocate_frames_by_bytes_at, PageTable, PhysicalAddress, PteFlags, BorrowedMappedPages, Mutable, Active};
 use sdt::{Sdt, GenericAddressStructure};
 use acpi_table::{AcpiTables, AcpiSignature};
 use static_assertions::const_assert_eq;
@@ -165,7 +165,7 @@ impl HpetAcpiTable {
     /// Returns a reference to the initialized `Hpet` structure.
     pub fn init_hpet(
         &self,
-        page_table: &mut PageTable,
+        page_table: &mut PageTable<Active>,
     ) -> Result<&'static RwLock<BorrowedMappedPages<Hpet, Mutable>>, &'static str> {
         let phys_addr = PhysicalAddress::new(self.gen_addr_struct.phys_addr as usize)
             .ok_or("HPET physical address was invalid")?;

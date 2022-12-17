@@ -16,7 +16,7 @@ extern crate bitflags;
 
 use spin::Once;
 use irq_safety::MutexIrqSafe;
-use memory::{PageTable, PteFlags, PhysicalAddress, allocate_frames_at, allocate_pages, BorrowedMappedPages, Mutable};
+use memory::{PageTable, PteFlags, PhysicalAddress, allocate_frames_at, allocate_pages, BorrowedMappedPages, Mutable, Active};
 
 mod regs;
 use regs::*;
@@ -49,7 +49,7 @@ static IOMMU: Once<MutexIrqSafe<IntelIommu>> = Once::new();
 pub fn init(host_address_width: u8,
     pci_segment_number: u16,
     register_base_address: PhysicalAddress,
-    page_table: &mut PageTable
+    page_table: &mut PageTable<Active>,
 ) -> Result<(), &'static str> {
 
     info!("IOMMU Init stage 1 begin.");
