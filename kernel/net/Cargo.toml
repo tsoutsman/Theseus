@@ -11,6 +11,7 @@ mutex_sleep = { path = "../mutex_sleep" }
 nic_buffers = { path = "../nic_buffers" }
 random = { path = "../random" }
 spin = "0.9"
+time = { path = "../time" }
 
 [dependencies.smoltcp]
 # TODO: move to patch in root Cargo.toml after removing legacy net interface

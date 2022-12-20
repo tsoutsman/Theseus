@@ -23,35 +23,6 @@ use network_manager::{NetworkInterfaceRef, NETWORK_INTERFACES};
 /// The starting number for freely-available (non-reserved) standard TCP/UDP ports.
 pub const STARTING_FREE_PORT: u16 = 49152;
 
-/// A simple macro to get the current HPET clock ticks.
-#[macro_export]
-macro_rules! hpet_ticks {
-    () => {
-        get_hpet().as_ref().ok_or("coudln't get HPET timer")?.get_counter()
-    };
-}
-
-/// Function to calculate the currently elapsed time (in milliseconds) since the given `start_time` (hpet ticks).
-pub fn millis_since(start_time: u64) -> Result<u64, &'static str> {
-    const FEMTOSECONDS_PER_MILLISECOND: u64 = 1_000_000_000_000;
-    static HPET_PERIOD_FEMTOSECONDS: Once<u32> = Once::new();
-
-    let hpet_freq = match HPET_PERIOD_FEMTOSECONDS.get() {
-        Some(period) => period,
-        _ => {
-            let freq = get_hpet().as_ref().ok_or("couldn't get HPET")?.counter_period_femtoseconds();
-            HPET_PERIOD_FEMTOSECONDS.call_once(|| freq)
-        }
-    };
-    let hpet_freq = *hpet_freq as u64;
-
-    let end_time: u64 = get_hpet().as_ref().ok_or("coudln't get HPET timer")?.get_counter();
-    // Convert to ms
-    let diff = (end_time - start_time) * hpet_freq / FEMTOSECONDS_PER_MILLISECOND;
-    Ok(diff)
-}
-
-
 /// Returns the first network interface available in the system.
 pub fn get_default_iface() -> Result<NetworkInterfaceRef, &'static str> {
     NETWORK_INTERFACES.lock()

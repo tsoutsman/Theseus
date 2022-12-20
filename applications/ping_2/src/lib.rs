@@ -12,6 +12,7 @@ use net::{
     wire::{Icmpv4Packet, Icmpv4Repr},
     IpAddress, SocketSet,
 };
+use time::Duration;
 
 pub fn main(args: Vec<String>) -> isize {
     let mut opts = Options::new();
@@ -21,6 +22,18 @@ pub fn main(args: Vec<String>) -> isize {
         "count",
         "stop after <count> replies (default: 4)",
         "<count>",
+    );
+    opts.optopt(
+        "i",
+        "interval",
+        "interval in milliseconds between packets being sent (default: 1000)",
+        "<interval>",
+    );
+    opts.optopt(
+        "t",
+        "timeout",
+        "maximum time in milliseconds between echo request and echo reply (default: 5000)",
+        "<timeout>",
     );
     opts.optopt(
         "s",
@@ -61,6 +74,16 @@ fn _main(matches: Matches) -> Result<(), &'static str> {
     let count = matches
         .opt_get_default("c", 4)
         .map_err(|_| "invalid count")?;
+    let interval = Duration::from_millis(
+        matches
+            .opt_get_default("i", 1000)
+            .map_err(|_| "invalid interval")?,
+    );
+    let timeout = Duration::from_millis(
+        matches
+            .opt_get_default("i", 5000)
+            .map_err(|_| "invalid timeout")?,
+    );
     let packet_size = {
         let packet_size = matches
             .opt_get_default("s", 56)
@@ -85,8 +108,12 @@ fn _main(matches: Matches) -> Result<(), &'static str> {
     let mut sent = 0;
     let mut received = 0;
 
+    let mut last_sent = Instant::ZERO;
+
     loop {
-        iface.poll(&mut sockets).map_err(|_| "failed to poll socket")?;
+        iface
+            .poll(&mut sockets)
+            .map_err(|_| "failed to poll socket")?;
 
         let socket = sockets.get_mut::<Socket>(handle);
 
@@ -96,7 +123,8 @@ fn _main(matches: Matches) -> Result<(), &'static str> {
                 .map_err(|_| "failed to bind to endpoint")?;
         }
 
-        if socket.can_send() && sent == received && sent < count {
+        let timestamp = time::now();
+        if socket.can_send() && sent < count && timestamp.duration_since(last_sent) >= interval {
             let repr = Icmpv4Repr::EchoRequest {
                 ident: 0x22b,
                 seq_no: sent,
@@ -110,6 +138,7 @@ fn _main(matches: Matches) -> Result<(), &'static str> {
 
             repr.emit(&mut packet, &ChecksumCapabilities::ignored());
             sent += 1;
+            last_sent = timestamp;
         }
 
         if socket.can_recv() {

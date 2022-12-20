@@ -15,7 +15,6 @@ extern crate byteorder;
 extern crate hpet;
 extern crate smoltcp_helper;
 extern crate hashbrown;
-extern crate ota_update_client;
 extern crate getopts;
 
 
@@ -33,17 +32,6 @@ use smoltcp::{
 use network_manager::{NetworkInterfaceRef, NETWORK_INTERFACES};
 use byteorder::{ByteOrder, NetworkEndian};
 use smoltcp_helper::{millis_since, poll_iface};
-
-
-macro_rules! hpet_ticks {
-    () => {
-        match get_hpet().as_ref().ok_or("coudln't get HPET timer") {
-            Ok(time) => time.get_counter(),
-            Err(_) => return println!("couldnt get HPET timer"),
-        }
-    };
-}
-
 
 pub fn main(args: Vec<String>) -> isize {
 
