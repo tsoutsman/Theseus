@@ -2885,6 +2885,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "runqueue_fancy"
+version = "0.1.0"
+dependencies = [
+ "task",
+]
+
+[[package]]
 name = "runqueue_priority"
 version = "0.1.0"
 dependencies = [
@@ -2973,6 +2980,10 @@ dependencies = [
  "spawn",
  "task",
 ]
+
+[[package]]
+name = "scheduler_fancy"
+version = "0.1.0"
 
 [[package]]
 name = "scheduler_priority"
