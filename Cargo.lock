@@ -377,6 +377,7 @@ dependencies = [
  "ota_update_client",
  "page_attribute_table",
  "print",
+ "runqueue",
  "scheduler",
  "simd_personality",
  "spawn",
@@ -2890,10 +2891,10 @@ dependencies = [
 name = "runqueue_priority"
 version = "0.1.0"
 dependencies = [
- "atomic_linked_list",
  "log",
  "mutex_preemption",
  "single_simd_task_optimization",
+ "spin 0.9.4",
  "task",
 ]
 
@@ -2901,9 +2902,9 @@ dependencies = [
 name = "runqueue_realtime"
 version = "0.1.0"
 dependencies = [
- "atomic_linked_list",
  "log",
  "mutex_preemption",
+ "spin 0.9.4",
  "task",
 ]
 
@@ -2911,10 +2912,10 @@ dependencies = [
 name = "runqueue_round_robin"
 version = "0.1.0"
 dependencies = [
- "atomic_linked_list",
  "log",
  "mutex_preemption",
  "single_simd_task_optimization",
+ "spin 0.9.4",
  "task",
 ]
 
