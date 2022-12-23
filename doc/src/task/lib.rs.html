@@ -1551,6 +1551,40 @@
 <span id="1551">1551</span>
 <span id="1552">1552</span>
 <span id="1553">1553</span>
+<span id="1554">1554</span>
+<span id="1555">1555</span>
+<span id="1556">1556</span>
+<span id="1557">1557</span>
+<span id="1558">1558</span>
+<span id="1559">1559</span>
+<span id="1560">1560</span>
+<span id="1561">1561</span>
+<span id="1562">1562</span>
+<span id="1563">1563</span>
+<span id="1564">1564</span>
+<span id="1565">1565</span>
+<span id="1566">1566</span>
+<span id="1567">1567</span>
+<span id="1568">1568</span>
+<span id="1569">1569</span>
+<span id="1570">1570</span>
+<span id="1571">1571</span>
+<span id="1572">1572</span>
+<span id="1573">1573</span>
+<span id="1574">1574</span>
+<span id="1575">1575</span>
+<span id="1576">1576</span>
+<span id="1577">1577</span>
+<span id="1578">1578</span>
+<span id="1579">1579</span>
+<span id="1580">1580</span>
+<span id="1581">1581</span>
+<span id="1582">1582</span>
+<span id="1583">1583</span>
+<span id="1584">1584</span>
+<span id="1585">1585</span>
+<span id="1586">1586</span>
+<span id="1587">1587</span>
 </pre><pre class="rust"><code><span class="doccomment">//! This crate contains the `Task` structure for supporting multithreading, 
 //! and the associated code for dealing with tasks.
 //! 
@@ -1607,6 +1641,7 @@
     ops::Deref,
     panic::PanicInfo,
     sync::atomic::{AtomicBool, AtomicUsize, Ordering},
+    task::Waker,
 };
 <span class="kw">use </span>alloc::{
     boxed::Box,
@@ -1867,6 +1902,8 @@
     <span class="doccomment">/// Stores the restartable information of the task. 
     /// `Some(RestartInfo)` indicates that the task is restartable.
     </span><span class="kw">pub </span>restart_info: <span class="prelude-ty">Option</span>&lt;RestartInfo&gt;,
+    <span class="doccomment">/// The waker that is awoken when this task completes.
+    </span>waker: <span class="prelude-ty">Option</span>&lt;Waker&gt;,
 }
 
 
@@ -1900,6 +1937,12 @@
     ///
     /// This is not public because it permits interior mutability.
     </span>runstate: AtomicCell&lt;RunState&gt;,
+    <span class="doccomment">/// Whether the task is suspended.
+    ///
+    /// This is only triggered by a Ctrl + Z in the terminal.
+    ///
+    /// This is not public because it permits interior mutability.
+    </span>suspended: AtomicBool,
     <span class="doccomment">/// Whether this Task is joinable.
     /// * If `true`, another task holds the [`JoinableTaskRef`] object that was created
     ///   by [`TaskRef::new()`], which indicates that that other task is able to
@@ -1994,7 +2037,7 @@
     </span><span class="kw">pub fn </span>new(
         kstack: <span class="prelude-ty">Option</span>&lt;Stack&gt;,
         parent_task: <span class="prelude-ty">Option</span>&lt;<span class="kw-2">&amp;</span>TaskRef&gt;,
-        failure_cleanup_function: FailureCleanupFunction
+        failure_cleanup_function: FailureCleanupFunction,
     ) -&gt; <span class="prelude-ty">Result</span>&lt;Task, <span class="kw-2">&amp;</span><span class="lifetime">&#39;static </span>str&gt; {
         <span class="kw">let </span>clone_inherited_items = |taskref: <span class="kw-2">&amp;</span>TaskRef| {
             (
@@ -2049,11 +2092,13 @@
                 kill_handler: <span class="prelude-val">None</span>,
                 env,
                 restart_info: <span class="prelude-val">None</span>,
+                waker: <span class="prelude-val">None</span>,
             }),
             id: task_id,
             name: <span class="macro">format!</span>(<span class="string">&quot;task_{}&quot;</span>, task_id),
             running_on_cpu: AtomicCell::new(<span class="prelude-val">None</span>.into()),
             runstate: AtomicCell::new(RunState::Initing),
+            suspended: AtomicBool::new(<span class="bool-val">false</span>),
             <span class="comment">// Tasks are not considered &quot;joinable&quot; until passed to `TaskRef::new()`
             </span>joinable: AtomicBool::new(<span class="bool-val">false</span>),
             mmi,
@@ -2298,7 +2343,7 @@
             <span class="prelude-val">Err</span>(<span class="self">self</span>.runstate.load())
         }
     }
-
+    
     <span class="doccomment">/// Makes this `Task` `Runnable` if it is a newly-spawned and fully initialized task.
     ///
     /// This is a special case only to be used when spawning a new task that
@@ -2312,6 +2357,26 @@
         } <span class="kw">else </span>{
             <span class="prelude-val">Err</span>(<span class="self">self</span>.runstate.load())
         }
+    }
+
+    <span class="doccomment">/// Suspends this `Task`.
+    </span><span class="kw">pub fn </span>suspend(<span class="kw-2">&amp;</span><span class="self">self</span>) {
+        <span class="self">self</span>.suspended.store(<span class="bool-val">true</span>, Ordering::Release);
+    }
+
+    <span class="doccomment">/// Unsuspends this `Task`.
+    </span><span class="kw">pub fn </span>unsuspend(<span class="kw-2">&amp;</span><span class="self">self</span>) {
+        <span class="self">self</span>.suspended.store(<span class="bool-val">false</span>, Ordering::Release);
+    }
+
+    <span class="doccomment">/// Returns whether this `Task` is suspended.
+    </span><span class="kw">pub fn </span>is_suspended(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; bool {
+        <span class="self">self</span>.suspended.load(Ordering::Acquire)
+    }
+    
+    <span class="doccomment">/// Sets the waker to be awoken when this task exits.
+    </span><span class="kw">pub fn </span>set_waker(<span class="kw-2">&amp;</span><span class="self">self</span>, waker: Waker) {
+        <span class="self">self</span>.inner.lock().waker = <span class="prelude-val">Some</span>(waker);
     }
 
     <span class="doccomment">/// Sets this `Task` as this CPU&#39;s current task.
@@ -2864,6 +2929,9 @@
                 // let _taskref_in_tls = deinit_current_task();
                 // drop(_taskref_in_tls);
             </span>}
+            <span class="kw">if let </span><span class="prelude-val">Some</span>(waker) = inner.waker.take() {
+                waker.wake();
+            }
         }
 
         <span class="attr">#[cfg(runqueue_spillful)] </span>{   
