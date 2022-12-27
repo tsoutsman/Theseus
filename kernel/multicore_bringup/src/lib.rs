@@ -28,9 +28,9 @@ use core::{
 use spin::Mutex;
 use volatile::Volatile;
 use zerocopy::FromBytes;
-use memory::{VirtualAddress, PhysicalAddress, MappedPages, EntryFlags, MmiRef};
+use memory::{VirtualAddress, PhysicalAddress, MappedPages, PteFlags, MmiRef};
 use kernel_config::memory::{PAGE_SIZE, PAGE_SHIFT, KERNEL_STACK_SIZE_IN_PAGES};
-use apic::{LocalApic, get_lapics, get_my_apic_id, has_x2apic, get_bsp_id, cpu_count};
+use apic::{LocalApic, get_lapics, current_cpu, has_x2apic, bootstrap_cpu, cpu_count};
 use ap_start::{kstart_ap, AP_READY_FLAG};
 use madt::{Madt, MadtEntry, MadtLocalApic, find_nmi_entry_for_processor};
 use pause::spin_loop_hint;
@@ -48,11 +48,7 @@ const TRAMPOLINE: usize = AP_STARTUP - PAGE_SIZE;
 const GRAPHIC_INFO_OFFSET_FROM_TRAMPOLINE: usize = 0x100;
 
 /// Graphic mode information that will be updated after `handle_ap_cores()` is invoked. 
-pub static GRAPHIC_INFO: Mutex<GraphicInfo> = Mutex::new(GraphicInfo {
-    width: 0,
-    height: 0,
-    physical_address: 0,
-});
+pub static GRAPHIC_INFO: Mutex<GraphicInfo> = Mutex::new(GraphicInfo::new());
 
 /// A structure to access information about the graphical framebuffer mode
 /// that was discovered and chosen in the AP's real-mode initialization sequence.
@@ -60,11 +56,62 @@ pub static GRAPHIC_INFO: Mutex<GraphicInfo> = Mutex::new(GraphicInfo {
 /// # Struct format
 /// The layout of fields in this struct must be kept in sync with the code in 
 /// `ap_realmode.asm` that writes to this structure.
-#[derive(FromBytes, Clone, Debug)]
+#[derive(FromBytes, Clone, Copy, Debug)]
+#[repr(packed)]
 pub struct GraphicInfo {
-    pub width: u64,
-    pub height: u64,
-    pub physical_address: u64,
+    /// The visible width of the screen, in pixels.
+    width: u16,
+    /// The visible height of the screen, in pixels.
+    height: u16,
+    /// The physical address of the primary framebuffer memory.
+    physical_address: u32,
+    /// The `mode` that the VGA is currently operating in.
+    ///
+    /// This is a bitfield that Theseus doesn't currently use.
+    _mode: u16,
+    /// The attribute bitfield that describes the VGA mode's capabilities.
+    ///
+    /// This is a bitfield that Theseus doesn't currently use.
+    _attributes: u16,
+    /// The total size of the graphic VGA memory in 64 KiB chunks.
+    total_memory_size_64_kib_chunks: u16,
+}
+
+impl GraphicInfo {
+    const fn new() -> Self {
+        Self {
+            width: 0,
+            height: 0,
+            physical_address: 0,
+            _mode: 0,
+            _attributes: 0,
+            total_memory_size_64_kib_chunks: 0,
+        }
+    }
+
+    /// Returns the visible width of the screen, in pixels.
+    pub fn width(&self) -> u16 {
+        self.width
+    }
+
+    /// Returns the height width of the screen, in pixels.
+    pub fn height(&self) -> u16 {
+        self.height
+    }
+
+    /// Returns the physical address of the primary framebuffer memory.
+    pub fn physical_address(&self) -> u32 {
+        self.physical_address
+    }
+
+    /// Returns the total size in bytes of the VGA graphics memory.
+    ///
+    /// This memory contains the framebuffer as well as any extra visible
+    /// displayable memory, which can be used for any graphics purposes,
+    /// e.g., a backbuffer for double buffering (aka page flipping).
+    pub fn total_memory_size_in_bytes(&self) -> u32 {
+        (self.total_memory_size_64_kib_chunks as u32) << 16
+    }
 }
 
 /// Starts up and sets up AP cores based on system information from ACPI
@@ -82,7 +129,7 @@ pub fn handle_ap_cores(
     ap_start_realmode_begin: VirtualAddress,
     ap_start_realmode_end: VirtualAddress,
     max_framebuffer_resolution: Option<(u16, u16)>,
-) -> Result<u8, &'static str> {
+) -> Result<u32, &'static str> {
     let ap_startup_size_in_bytes = ap_start_realmode_end.value() - ap_start_realmode_begin.value();
 
     let page_table_phys_addr: PhysicalAddress;
@@ -106,21 +153,22 @@ pub fn handle_ap_cores(
         let ap_startup_pages  = memory::allocate_pages_at(VirtualAddress::new_canonical(AP_STARTUP), ap_startup_frames.size_in_frames())
             .map_err(|_e| "handle_ap_cores(): failed to allocate AP startup pages")?;
         
+        let flags = PteFlags::new().valid(true).writable(true);
         trampoline_mapped_pages = page_table.map_allocated_pages_to(
             trampoline_page, 
             trampoline_frame, 
-            EntryFlags::PRESENT | EntryFlags::WRITABLE, 
+            flags,
         )?;
         ap_startup_mapped_pages = page_table.map_allocated_pages_to(
             ap_startup_pages,
             ap_startup_frames,
-            EntryFlags::PRESENT | EntryFlags::WRITABLE,
+            flags,
         )?;
         page_table_phys_addr = page_table.physical_address();
     }
 
     let all_lapics = get_lapics();
-    let me = get_my_apic_id();
+    let me = current_cpu();
 
     // Copy the AP startup code (from the kernel's text section pages) into the AP_STARTUP physical address entry point.
     {
@@ -167,7 +215,7 @@ pub fn handle_ap_cores(
 
                 // start up this AP, and have it create a new LocalApic for itself. 
                 // This must be done by each core itself, and not called repeatedly by the BSP on behalf of other cores.
-                let bsp_lapic_ref = get_bsp_id()
+                let bsp_lapic_ref = bootstrap_cpu()
                     .and_then(|bsp_id| all_lapics.get(&bsp_id))
                     .ok_or("Couldn't get BSP's LocalApic!")?;
                 let mut bsp_lapic = bsp_lapic_ref.write();

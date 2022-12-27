@@ -9,31 +9,22 @@ extern crate alloc;
 extern crate memory;
 extern crate mpmc;
 extern crate pci;
-extern crate owning_ref;
 extern crate intel_ethernet;
 extern crate nic_buffers;
 extern crate volatile;
 extern crate nic_queues;
 
-use memory::{EntryFlags, PhysicalAddress, allocate_pages_by_bytes, allocate_frames_by_bytes_at, get_kernel_mmi_ref, MappedPages, create_contiguous_mapping};
-use pci::{PciDevice};
-use alloc::{
-    vec::Vec,
-    boxed::Box,
-};
-use owning_ref::BoxRefMut;
+use alloc::vec::Vec;
 use intel_ethernet::descriptors::{RxDescriptor, TxDescriptor};
+use memory::{
+    allocate_frames_by_bytes_at, allocate_pages_by_bytes, create_contiguous_mapping,
+    get_kernel_mmi_ref, BorrowedSliceMappedPages, MappedPages, Mutable, PhysicalAddress,
+};
 use nic_buffers::ReceiveBuffer;
 use nic_queues::{RxQueueRegisters, TxQueueRegisters};
+use pci::PciDevice;
 
-/// The mapping flags used for pages that the NIC will map.
-pub const NIC_MAPPING_FLAGS: EntryFlags = EntryFlags::from_bits_truncate(
-    EntryFlags::PRESENT.bits() |
-    EntryFlags::WRITABLE.bits() |
-    EntryFlags::NO_CACHE.bits() |
-    EntryFlags::NO_EXECUTE.bits()
-);
-
+pub use nic_queues::NIC_MAPPING_FLAGS;
 
 /// Allocates memory for the NIC registers
 /// 
@@ -77,7 +68,7 @@ pub fn init_rx_buf_pool(num_rx_buffers: usize, buffer_size: u16, rx_buffer_pool:
     let length = buffer_size;
     for _i in 0..num_rx_buffers {
         let (mp, phys_addr) = create_contiguous_mapping(length as usize, NIC_MAPPING_FLAGS)?; 
-        let rx_buf = ReceiveBuffer::new(mp, phys_addr, length, rx_buffer_pool);
+        let rx_buf = ReceiveBuffer::new(mp, phys_addr, length, rx_buffer_pool)?;
         if rx_buffer_pool.push(rx_buf).is_err() {
             // if the queue is full, it returns an Err containing the object trying to be pushed
             error!("intel_ethernet::init_rx_buf_pool(): rx buffer pool is full, cannot add rx buffer {}!", _i);
@@ -96,7 +87,7 @@ pub fn init_rx_buf_pool(num_rx_buffers: usize, buffer_size: u16, rx_buffer_pool:
 /// * `buffer_size`: size of each buffer in the pool in bytes
 /// * `rxq_regs`: registers needed to set up a receive queue 
 pub fn init_rx_queue<T: RxDescriptor, S:RxQueueRegisters>(num_desc: usize, rx_buffer_pool: &'static mpmc::Queue<ReceiveBuffer>, buffer_size: usize, rxq_regs: &mut S)
-    -> Result<(BoxRefMut<MappedPages, [T]>, Vec<ReceiveBuffer>), &'static str> 
+    -> Result<(BorrowedSliceMappedPages<T, Mutable>, Vec<ReceiveBuffer>), &'static str> 
 {    
     let size_in_bytes_of_all_rx_descs_per_queue = num_desc * core::mem::size_of::<T>();
     
@@ -104,7 +95,8 @@ pub fn init_rx_queue<T: RxDescriptor, S:RxQueueRegisters>(num_desc: usize, rx_bu
     let (rx_descs_mapped_pages, rx_descs_starting_phys_addr) = create_contiguous_mapping(size_in_bytes_of_all_rx_descs_per_queue, NIC_MAPPING_FLAGS)?;
 
     // cast our physically-contiguous MappedPages into a slice of receive descriptors
-    let mut rx_descs = BoxRefMut::new(Box::new(rx_descs_mapped_pages)).try_map_mut(|mp| mp.as_slice_mut::<T>(0, num_desc))?;
+    let mut rx_descs = rx_descs_mapped_pages.into_borrowed_slice_mut::<T>(0, num_desc)
+        .map_err(|(_mp, err)| err)?;
 
     // now that we've created the rx descriptors, we can fill them in with initial values
     let mut rx_bufs_in_use: Vec<ReceiveBuffer> = Vec::with_capacity(num_desc);
@@ -115,11 +107,11 @@ pub fn init_rx_queue<T: RxDescriptor, S:RxQueueRegisters>(num_desc: usize, rx_bu
             .ok_or("Couldn't obtain a ReceiveBuffer from the pool")
             .or_else(|_e| {
                 create_contiguous_mapping(buffer_size, NIC_MAPPING_FLAGS)
-                    .map(|(buf_mapped, buf_paddr)| 
+                    .and_then(|(buf_mapped, buf_paddr)|
                         ReceiveBuffer::new(buf_mapped, buf_paddr, buffer_size as u16, rx_buffer_pool)
                     )
             })?;
-        let paddr_buf = rx_buf.phys_addr;
+        let paddr_buf = rx_buf.phys_addr();
         rx_bufs_in_use.push(rx_buf); 
 
 
@@ -150,7 +142,7 @@ pub fn init_rx_queue<T: RxDescriptor, S:RxQueueRegisters>(num_desc: usize, rx_bu
 /// * `num_desc`: number of descriptors in the queue
 /// * `txq_regs`: registers needed to set up a transmit queue
 pub fn init_tx_queue<T: TxDescriptor, S: TxQueueRegisters>(num_desc: usize, txq_regs: &mut S) 
-    -> Result<BoxRefMut<MappedPages, [T]>, &'static str> 
+    -> Result<BorrowedSliceMappedPages<T, Mutable>, &'static str> 
 {
     let size_in_bytes_of_all_tx_descs = num_desc * core::mem::size_of::<T>();
     
@@ -158,8 +150,8 @@ pub fn init_tx_queue<T: TxDescriptor, S: TxQueueRegisters>(num_desc: usize, txq_
     let (tx_descs_mapped_pages, tx_descs_starting_phys_addr) = create_contiguous_mapping(size_in_bytes_of_all_tx_descs, NIC_MAPPING_FLAGS)?;
 
     // cast our physically-contiguous MappedPages into a slice of transmit descriptors
-    let mut tx_descs = BoxRefMut::new(Box::new(tx_descs_mapped_pages))
-        .try_map_mut(|mp| mp.as_slice_mut::<T>(0, num_desc))?;
+    let mut tx_descs = tx_descs_mapped_pages.into_borrowed_slice_mut::<T>(0, num_desc)
+        .map_err(|(_mp, err)| err)?;
 
     // now that we've created the tx descriptors, we can fill them in with initial values
     for td in tx_descs.iter_mut() {

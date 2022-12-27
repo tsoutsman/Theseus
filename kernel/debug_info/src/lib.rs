@@ -30,7 +30,7 @@ use alloc::{
 };
 use fs_node::WeakFileRef;
 use owning_ref::ArcRef;
-use memory::{MappedPages, VirtualAddress, MmiRef, allocate_pages_by_bytes, EntryFlags};
+use memory::{MappedPages, VirtualAddress, MmiRef, allocate_pages_by_bytes, PteFlags};
 use xmas_elf::{
     ElfFile,
     sections::{SectionData, SectionData::Rela64, ShType},
@@ -730,14 +730,14 @@ impl DebugSymbols {
                     // trace!("             Entry name {} {:?} vis {:?} bind {:?} type {:?} shndx {} value {} size {}", 
                     //     source_sec_entry.name(), source_sec_entry.get_name(&elf_file), 
                     //     source_sec_entry.get_other(), source_sec_entry.get_binding(), source_sec_entry.get_type(), 
-                    //     source_sec_entry.shndx(), source_sec_entry.value(), source_sec_entry.size());
+                    //     source_sec_entry.shndx(), source_sec_entry.value(), source_sec_entry.size);
                 }
                 
                 let mut source_and_target_in_same_crate = false;
 
                 // We first check if the source section is another debug section, then check if its a local section from the given `loaded_crate`.
                 let (source_sec_vaddr, source_sec_dep) = match shndx_map.get(&source_sec_shndx).map(|s| (s.virt_addr, None))
-                    .or_else(|| loaded_crate.lock_as_ref().sections.get(&source_sec_shndx).map(|sec| (sec.address_range.start, Some(sec.clone()))))
+                    .or_else(|| loaded_crate.lock_as_ref().sections.get(&source_sec_shndx).map(|sec| (sec.virt_addr, Some(sec.clone()))))
                 {
                     // We found the source section in the local debug sections or the given loaded crate. 
                     Some(found) => {
@@ -764,7 +764,7 @@ impl DebugSymbols {
                             namespace.get_symbol_or_load(&demangled, None, kernel_mmi_ref, false)
                                 .upgrade()
                                 .ok_or("Couldn't get symbol for .debug section's foreign relocation entry, nor load its containing crate")
-                                .map(|sec| (sec.address_range.start, Some(sec)))
+                                .map(|sec| (sec.virt_addr, Some(sec)))
                         }
                         else {
                             let _source_sec_header = source_sec_entry
@@ -799,7 +799,10 @@ impl DebugSymbols {
 
         // The .debug sections were initially mapped as writable so we could modify them,
         // but they should actually just be read-only as specified by the ELF file flags.
-        debug_sections_mp.remap(&mut kernel_mmi_ref.lock().page_table, EntryFlags::PRESENT)?; 
+        debug_sections_mp.remap(
+            &mut kernel_mmi_ref.lock().page_table,
+            PteFlags::new().valid(true),
+        )?; 
         let debug_sections_mp = Arc::new(debug_sections_mp);
 
         let create_debug_section_slice = |debug_sec: DebugSection| -> Result<DebugSectionSlice, &'static str> {
@@ -879,8 +882,12 @@ fn allocate_debug_section_pages(elf_file: &ElfFile, kernel_mmi_ref: &MmiRef) -> 
         return Err("no .debug sections found");
     }
 
-    let allocated_pages = allocate_pages_by_bytes(ro_bytes).ok_or("Couldn't allocate_pages_by_bytes, out of virtual address space")?;
-    let mp = kernel_mmi_ref.lock().page_table.map_allocated_pages(allocated_pages, EntryFlags::PRESENT | EntryFlags::WRITABLE)?;
+    let allocated_pages = allocate_pages_by_bytes(ro_bytes)
+        .ok_or("Couldn't allocate_pages_by_bytes, out of virtual address space")?;
+    let mp = kernel_mmi_ref.lock().page_table.map_allocated_pages(
+        allocated_pages,
+        PteFlags::new().valid(true).writable(true),
+    )?;
     let start_address = mp.start_address();
     let range = start_address .. (start_address + ro_bytes);
     Ok((mp, range))

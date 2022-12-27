@@ -6,7 +6,7 @@ extern crate task;
 extern crate spawn;
 extern crate scheduler;
 extern crate mutex_sleep;
-extern crate apic;
+extern crate cpu;
 
 use core::ops::Deref;
 
@@ -35,7 +35,7 @@ pub fn main(_args: Vec<String>) -> isize {
 
 /// A simple test that spawns 3 tasks that all contend to increment a shared usize
 fn test_contention() -> Result<(), &'static str> {
-    let my_cpu = apic::get_my_apic_id();
+    let my_cpu = cpu::current_cpu();
 
     let shared_lock = Arc::new(MutexSleep::new(0usize));
 
@@ -59,7 +59,9 @@ fn test_contention() -> Result<(), &'static str> {
 
     warn!("Finished spawning the 3 tasks");
 
-    t3.unblock(); t2.unblock(); t1.unblock();
+    t3.unblock().unwrap();
+    t2.unblock().unwrap();
+    t1.unblock().unwrap();
 
     t1.join()?;
     t2.join()?;
@@ -71,8 +73,8 @@ fn test_contention() -> Result<(), &'static str> {
 
 
 fn mutex_sleep_task(lock: Arc<MutexSleep<usize>>) -> Result<(), &'static str> {
-    let curr_task = task::get_my_current_task().ok_or("couldn't get current task")?;
-    let curr_task = format!("{}", curr_task.deref());
+    let curr_task = task::with_current_task(|t| format!("{}", t.deref()))
+        .map_err(|_| "couldn't get current task")?;
     warn!("ENTERED TASK {}", curr_task);
 
     for _i in 0..1000 {
@@ -91,7 +93,7 @@ fn mutex_sleep_task(lock: Arc<MutexSleep<usize>>) -> Result<(), &'static str> {
 
 /// A test for running multiple tasks that are synchronized in lockstep
 fn test_lockstep() -> Result<(), &'static str> {
-    let my_cpu = apic::get_my_apic_id();
+    let my_cpu = cpu::current_cpu();
 
     let shared_lock = Arc::new(MutexSleep::new(0usize));
 
@@ -115,7 +117,9 @@ fn test_lockstep() -> Result<(), &'static str> {
 
     warn!("Finished spawning the 3 tasks");
 
-    t3.unblock(); t2.unblock(); t1.unblock();
+    t3.unblock().unwrap();
+    t2.unblock().unwrap();
+    t1.unblock().unwrap();
 
     t1.join()?;
     t2.join()?;
@@ -127,10 +131,8 @@ fn test_lockstep() -> Result<(), &'static str> {
 
 
 fn lockstep_task((lock, remainder): (Arc<MutexSleep<usize>>, usize)) -> Result<(), &'static str> {
-    let curr_task = {
-        let t = task::get_my_current_task().ok_or("couldn't get current task")?;
-        format!("{}", t.deref())
-    };
+    let curr_task = task::with_current_task(|t| format!("{}", t.deref()))
+        .map_err(|_| "couldn't get current task")?;
     warn!("ENTERED TASK {}", curr_task);
 
     for _i in 0..20 {

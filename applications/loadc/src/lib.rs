@@ -5,7 +5,7 @@
 
 #![no_std]
 
-#[macro_use] extern crate alloc;
+extern crate alloc;
 #[macro_use] extern crate log;
 #[macro_use] extern crate app_io;
 extern crate getopts;
@@ -24,7 +24,7 @@ use core::{
 };
 use alloc::{collections::BTreeSet, string::{String, ToString}, sync::Arc, vec::Vec};
 use getopts::{Matches, Options};
-use memory::{Page, MappedPages, VirtualAddress, EntryFlags};
+use memory::{Page, MappedPages, VirtualAddress, PteFlagsArch, PteFlags};
 use mod_mgmt::{CrateNamespace, StrongDependency, find_symbol_table, RelocationEntry, write_relocation};
 use rustc_demangle::demangle;
 use path::Path;
@@ -63,10 +63,13 @@ pub fn main(args: Vec<String>) -> isize {
 
 
 fn rmain(matches: Matches) -> Result<c_int, String> {
-    let curr_task = task::get_my_current_task().unwrap();
-    let curr_wd   = Arc::clone(&curr_task.get_env().lock().working_dir);
-    let namespace = curr_task.get_namespace();
-    let mmi       = &curr_task.mmi;
+    let (curr_wd, namespace, mmi) = task::with_current_task(|curr_task|
+        (
+            curr_task.get_env().lock().working_dir.clone(),
+            curr_task.get_namespace().clone(),
+            curr_task.mmi.clone(),
+        )
+    ).map_err(|_| String::from("failed to get current task"))?;
 
     let path = matches.free.get(0).ok_or_else(|| format!("Missing path to ELF executable"))?;
     let path = Path::new(path.clone());
@@ -85,7 +88,7 @@ fn rmain(matches: Matches) -> Result<c_int, String> {
     // most important of which are static data sections, 
     // as it is logically incorrect to have duplicates of data that are supposed to be global system-wide singletons.
     // We should throw a warning here if there are no relocations in the file, as it was probably built/linked with the wrong arguments.
-    overwrite_relocations(&namespace, &mut segments, &elf_file, mmi, false)?;
+    overwrite_relocations(&namespace, &mut segments, &elf_file, &mmi, false)?;
 
     // Remap each segment's mapped pages using the correct flags; they were previously mapped as always writable.
     {
@@ -137,7 +140,7 @@ pub struct LoadedSegment {
     /// (may be a subset)
     bounds: Range<VirtualAddress>,
     /// The proper flags for this segment specified by the ELF file.
-    flags: EntryFlags,
+    flags: PteFlagsArch,
     /// The indices of the sections in the ELF file 
     /// that were grouped ("mapped") into this segment by the linker.
     section_ndxs: BTreeSet<usize>,
@@ -273,11 +276,11 @@ fn parse_and_load_elf_executable<'f>(
         // debug!("Successfully split pages into {:?} and {:?}", this_ap, all_pages);
         // debug!("Adjusted segment vaddr: {:#X}, size: {:#X}, {:?}", start_vaddr, memory_size_in_bytes, this_ap.start_address());
 
-        let initial_flags = EntryFlags::from_elf_program_flags(prog_hdr.flags());
-        let mmi = &task::get_my_current_task().unwrap().mmi;
+        let initial_flags = convert_to_pte_flags(prog_hdr.flags());
+        let mmi = task::with_current_task(|t| t.mmi.clone()).unwrap();
         // Must initially map the memory as writable so we can copy the segment data to it later. 
         let mut mp = mmi.lock().page_table
-            .map_allocated_pages(this_ap, initial_flags | EntryFlags::WRITABLE)
+            .map_allocated_pages(this_ap, initial_flags.writable(true))
             .map_err(String::from)?;
 
         // Copy data from this section into the correct offset into our newly-mapped pages
@@ -315,7 +318,7 @@ fn parse_and_load_elf_executable<'f>(
         mapped_segments.push(LoadedSegment {
             mp,
             bounds: segment_bounds,
-            flags: initial_flags,
+            flags: initial_flags.into(),
             section_ndxs,
             sections_i_depend_on: Vec::new(), // this is populated later in `overwrite_relocations()`
         });
@@ -459,7 +462,7 @@ fn overwrite_relocations(
                     relocation_entry,
                     target_segment_slice,
                     offset_into_target_segment,
-                    existing_source_sec.start_address(),
+                    existing_source_sec.virt_addr,
                     verbose_log
                 )?;
                 relocation_entry.offset = original_relocation_offset;
@@ -493,11 +496,17 @@ fn overwrite_relocations(
     Ok(())
 }
 
+/// Converts the given ELF program flags into `PteFlags`.
+fn convert_to_pte_flags(prog_flags: xmas_elf::program::Flags) -> PteFlags {
+    PteFlags::new()
+        .valid(prog_flags.is_read())
+        .writable(prog_flags.is_read())
+        .executable(prog_flags.is_execute())
+}
 
 fn print_usage(opts: Options) {
     println!("{}", opts.usage(USAGE));
 }
-
 
 const USAGE: &'static str = "Usage: loadc [ARGS] PATH
 Loads C language ELF executables on Theseus.";

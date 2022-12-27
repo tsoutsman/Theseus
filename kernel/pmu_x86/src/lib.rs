@@ -59,7 +59,6 @@
 //! So, if you run `pmu_x86::init()` and `pmu_x86::start_samples()` on CPU core 2, it will only sample events on core 2.
 
 #![no_std]
-#![feature(const_btree_new)]
 
 extern crate spin;
 #[macro_use] extern crate lazy_static;
@@ -224,7 +223,7 @@ fn more_pmcs_than_expected(num_pmc: u8) -> Result<bool, &'static str> {
 /// This function should only be called after all the cores have been booted up.
 pub fn init() -> Result<(), &'static str> {
     let mut cores_initialized = CORES_INITIALIZED.lock();
-    let core_id = apic::get_my_apic_id();
+    let core_id = apic::current_cpu();
 
     if cores_initialized.contains(&core_id) {
         warn!("PMU has already been intitialized on core {}", core_id);
@@ -557,7 +556,7 @@ fn create_general_counter(event_mask: u64) -> Result<Counter, &'static str> {
 
 /// Does the work of iterating through programmable counters and using whichever one is free. Returns Err if none free
 fn programmable_start(event_mask: u64) -> Result<Counter, &'static str> {
-    let my_core = apic::get_my_apic_id();
+    let my_core = apic::current_cpu();
     let num_pmc = num_general_purpose_counters();
 
     for pmc in 0..num_pmc {
@@ -584,7 +583,7 @@ fn programmable_start(event_mask: u64) -> Result<Counter, &'static str> {
 
 /// Creates a counter object for a fixed hardware counter
 fn create_fixed_counter(msr_mask: u32) -> Result<Counter, &'static str> {
-    let my_core = apic::get_my_apic_id();
+    let my_core = apic::current_cpu();
     let count = rdpmc(msr_mask);
     
     return Ok(Counter {
@@ -598,7 +597,7 @@ fn create_fixed_counter(msr_mask: u32) -> Result<Counter, &'static str> {
 /// Checks that the PMU has been initialized. If it has been,
 /// the version ID tells whether the system has performance monitoring capabilities. 
 fn check_pmu_availability() -> Result<(), &'static str>  {
-    let core_id = apic::get_my_apic_id();
+    let core_id = apic::current_cpu();
     if !CORES_INITIALIZED.lock().contains(&core_id) {
         if *PMU_VERSION >= MIN_PMU_VERSION {
             error!("PMU version {} is available. It still needs to be initialized on this core", *PMU_VERSION);
@@ -654,7 +653,7 @@ pub fn start_samples(event_type: EventType, event_per_sample: u32, task_id: Opti
     check_pmu_availability()?;
 
     // perform checks to ensure that counter is ready to use and that previous results are not being unintentionally discarded
-    let my_core_id = apic::get_my_apic_id();
+    let my_core_id = apic::current_cpu();
 
     trace!("start_samples: the core id is : {}", my_core_id);
 
@@ -753,7 +752,7 @@ pub struct SampleResults {
 /// Returns the samples that were stored during sampling in the form of a SampleResults object. 
 /// If samples are not yet finished, forces them to stop.  
 pub fn retrieve_samples() -> Result<SampleResults, &'static str> {
-    let my_core_id = apic::get_my_apic_id();
+    let my_core_id = apic::current_cpu();
 
     let mut sampling_info = SAMPLING_INFO.lock();
     let mut samples = sampling_info.get_mut(&my_core_id).ok_or("pmu_x86::retrieve_samples: could not retrieve sampling information for this core")?;
@@ -781,8 +780,8 @@ pub fn print_samples(sample_results: &SampleResults) {
 
 /// Finds the corresponding function for each instruction pointer and calculates the percentage amount each function occured in the samples
 pub fn find_function_names_from_samples(sample_results: &SampleResults) -> Result<(), &'static str> {
-    let taskref = task::get_my_current_task().ok_or("pmu_x86::get_function_names_from_samples: Could not get reference to current task")?;
-    let namespace = taskref.get_namespace();
+    let namespace = task::with_current_task(|f| f.get_namespace().clone())
+        .map_err(|_| "pmu_x86::get_function_names_from_samples: couldn't get current task")?;
     debug!("Analyze Samples:");
 
     let mut sections: BTreeMap<String, usize> = BTreeMap::new();
@@ -837,7 +836,7 @@ pub fn handle_sample(stack_frame: &InterruptStackFrame) -> Result<bool, &'static
 
     unsafe { Msr::new(IA32_PERF_GLOBAL_OVF_CTRL).write(CLEAR_PERF_STATUS_MSR); }
 
-    let my_core_id = apic::get_my_apic_id();
+    let my_core_id = apic::current_cpu();
 
     let mut sampling_info = SAMPLING_INFO.lock();
     let mut samples = sampling_info.get_mut(&my_core_id)
@@ -853,18 +852,17 @@ pub fn handle_sample(stack_frame: &InterruptStackFrame) -> Result<bool, &'static
     samples.sample_count = current_count - 1;
 
     // if the running task is the requested one or if one isn't requested, records the IP
-    if let Some(taskref) = task::get_my_current_task() {
+    task::with_current_task(|taskref| {
         let requested_task_id = samples.task_id;
-        
         let task_id = taskref.id;
         if (requested_task_id == 0) | (requested_task_id == task_id) {
             samples.ip_list.push(stack_frame.instruction_pointer);
             samples.task_id_list.push(task_id);
         }
-    } else {
+    }).unwrap_or_else(|_| {
         samples.ip_list.push(stack_frame.instruction_pointer);
         samples.task_id_list.push(0);
-    }
+    });
 
     // stops the counter, resets it, and restarts it
     unsafe {

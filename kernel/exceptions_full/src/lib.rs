@@ -66,11 +66,11 @@ pub fn init(idt_ref: &'static LockedIdt) {
 macro_rules! println_both {
     ($fmt:expr) => {
         vga_buffer::print_raw!(concat!($fmt, "\n"));
-        print::print!(concat!($fmt, "\n"));
+        app_io::print!(concat!($fmt, "\n"));
     };
     ($fmt:expr, $($arg:tt)*) => {
         vga_buffer::print_raw!(concat!($fmt, "\n"), $($arg)*);
-        print::print!(concat!($fmt, "\n"), $($arg)*);
+        app_io::print!(concat!($fmt, "\n"), $($arg)*);
     };
 }
 
@@ -213,10 +213,16 @@ pub fn kill_and_halt(
         }
     }
     #[cfg(not(unwind_exceptions))] {
-        let res = task::get_my_current_task().ok_or("couldn't get current task").and_then(|taskref| taskref.kill(cause));
-        match res {
-            Ok(()) => { println_both!("Task {:?} killed itself successfully", task::get_my_current_task()); }
-            Err(e) => { println_both!("Task {:?} was unable to kill itself. Error: {:?}", task::get_my_current_task(), e); }
+        let res = task::with_current_task(|t| {
+            let kill_result = t.kill(cause);
+            match kill_result {
+                Ok(()) => { println_both!("Task {:?} killed itself successfully", t); }
+                Err(e) => { println_both!("Task {:?} was unable to kill itself. Error: {:?}", t, e); }
+            }
+            kill_result
+        });
+        if let Err(()) = res {
+            println_both!("BUG: kill_and_halt(): Couldn't get current task in order to kill it.");
         }
     }
 
@@ -232,9 +238,9 @@ pub fn kill_and_halt(
 /// Checks whether the given `vaddr` falls within a stack guard page, indicating stack overflow. 
 fn is_stack_overflow(vaddr: VirtualAddress) -> bool {
     let page = Page::containing_address(vaddr);
-    task::get_my_current_task()
-        .map(|curr_task| curr_task.with_kstack(|kstack| kstack.guard_page().contains(&page)))
-        .unwrap_or(false)
+    task::with_current_task(|t|
+        t.with_kstack(|kstack| kstack.guard_page().contains(&page))
+    ).unwrap_or(false)
 }
 
 /// Converts the given `exception_number` into a [`Signal`] category, if relevant.
@@ -275,7 +281,7 @@ extern "x86-interrupt" fn nmi_handler(stack_frame: InterruptStackFrame) {
     {
         let pages_to_invalidate = tlb_shootdown::TLB_SHOOTDOWN_IPI_PAGES.read().clone();
         if let Some(pages) = pages_to_invalidate {
-            // trace!("nmi_handler (AP {})", apic::get_my_apic_id());
+            // trace!("nmi_handler (AP {})", cpu::current_cpu());
             tlb_shootdown::handle_tlb_shootdown_ipi(pages);
             expected_nmi = true;
         }

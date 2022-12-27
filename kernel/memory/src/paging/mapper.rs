@@ -8,23 +8,30 @@
 // except according to those terms.
 
 use core::{
-    mem,
+    borrow::{Borrow, BorrowMut},
+    cmp::Ordering,
     fmt::{self, Write},
-    ops::Deref,
+    hash::{Hash, Hasher},
+    marker::PhantomData,
+    mem,
+    ops::{Deref, DerefMut},
     ptr::{NonNull, Unique},
     slice,
 };
-use {BROADCAST_TLB_SHOOTDOWN_FUNC, VirtualAddress, PhysicalAddress, Page, Frame, FrameRange, AllocatedPages, AllocatedFrames}; 
-use paging::{
+use log::{error, warn, debug, trace};
+use crate::{BROADCAST_TLB_SHOOTDOWN_FUNC, VirtualAddress, PhysicalAddress, Page, Frame, FrameRange, AllocatedPages, AllocatedFrames}; 
+use crate::paging::{
     get_current_p4,
     PageRange,
     table::{P4, Table, Level4},
 };
+use pte_flags::PteFlagsArch;
 use spin::Once;
 use kernel_config::memory::{PAGE_SIZE, ENTRIES_PER_PAGE_TABLE};
-use super::{EntryFlags, tlb_flush_virt_addr};
+use super::tlb_flush_virt_addr;
 use zerocopy::FromBytes;
 use page_table_entry::UnmapResult;
+use owned_borrowed_trait::{OwnedOrBorrowed, Owned, Borrowed};
 
 /// This is a private callback used to convert `UnmappedFrames` into `AllocatedFrames`.
 /// 
@@ -72,7 +79,7 @@ impl Mapper {
     }
 
     /// Dumps all page table entries at all four page table levels for the given `VirtualAddress`, 
-    /// and also shows their `EntryFlags`.
+    /// and also shows their `PteFlags`.
     /// 
     /// The page table details are written to the the given `writer`.
     pub fn dump_pte<W: Write>(&self, writer: &mut W, virtual_address: VirtualAddress) -> fmt::Result {
@@ -112,6 +119,7 @@ impl Mapper {
     pub fn translate_page(&self, page: Page) -> Option<Frame> {
         let p3 = self.p4().next_table(page.p4_index());
 
+        #[cfg(target_arch = "x86_64")]
         let huge_page = || {
             p3.and_then(|p3| {
                 let p3_entry = &p3[page.p3_index()];
@@ -141,6 +149,8 @@ impl Mapper {
                 None
             })
         };
+        #[cfg(target_arch = "aarch64")]
+        let huge_page = || { todo!("huge page (block descriptor) translation for aarch64") };
 
         p3.and_then(|p3| p3.next_table(page.p3_index()))
             .and_then(|p2| p2.next_table(page.p2_index()))
@@ -154,36 +164,40 @@ impl Mapper {
     /// 
     /// Returns a tuple of the new `MappedPages` object containing the allocated `pages`
     /// and the allocated `frames` object.
-    pub(super) fn internal_map_to(
+    pub(super) fn internal_map_to<Frames, Flags>(
         &mut self,
         pages: AllocatedPages,
-        frames: AllocatedFrames,
-        flags: EntryFlags,
-    ) -> Result<(MappedPages, AllocatedFrames), &'static str> {
-        let mut top_level_flags = flags.clone() | EntryFlags::PRESENT;
-        // P4, P3, and P2 entries should never set NO_EXECUTE, only the lowest-level P1 entry should. 
-        // top_level_flags.set(EntryFlags::WRITABLE, true); // is the same true for the WRITABLE bit?
-        top_level_flags.set(EntryFlags::NO_EXECUTE, false);
-        // Currently we cannot use the EXCLUSIVE bit for page table frames (P4, P3, P2),
-        // because another page table frame may re-use (create another alias for) it without us knowing here.
-        // Only the lowest-level P1 entry can be considered exclusive, only if it's mapped truly exclusively using this function.
-        top_level_flags.set(EntryFlags::EXCLUSIVE, false);
-        let actual_flags = flags | EntryFlags::EXCLUSIVE | EntryFlags::PRESENT;
+        frames: Frames,
+        flags: Flags,
+    ) -> Result<(MappedPages, Frames::Inner), &'static str> 
+    where
+        Frames: OwnedOrBorrowed<AllocatedFrames>,
+        Flags: Into<PteFlagsArch>,
+    {
+        let frames = frames.into_inner();
+        let flags = flags.into();
+        let higher_level_flags = flags.adjust_for_higher_level_pte();
+
+        // Only the lowest-level P1 entry can be considered exclusive, and only when
+        // we are mapping it exclusively (i.e., owned `AllocatedFrames` are passed in).
+        let actual_flags = flags
+            .valid(true)
+            .exclusive(Frames::OWNED);
 
         let pages_count = pages.size_in_pages();
-        let frames_count = frames.size_in_frames();
+        let frames_count = frames.borrow().size_in_frames();
         if pages_count != frames_count {
             error!("map_allocated_pages_to(): pages {:?} count {} must equal frames {:?} count {}!", 
-                pages, pages_count, frames, frames_count
+                pages, pages_count, frames.borrow(), frames_count
             );
             return Err("map_allocated_pages_to(): page count must equal frame count");
         }
 
         // iterate over pages and frames in lockstep
-        for (page, frame) in pages.deref().clone().into_iter().zip(frames.into_iter()) {
-            let p3 = self.p4_mut().next_table_create(page.p4_index(), top_level_flags);
-            let p2 = p3.next_table_create(page.p3_index(), top_level_flags);
-            let p1 = p2.next_table_create(page.p2_index(), top_level_flags);
+        for (page, frame) in pages.deref().clone().into_iter().zip(frames.borrow().into_iter()) {
+            let p3 = self.p4_mut().next_table_create(page.p4_index(), higher_level_flags);
+            let p2 = p3.next_table_create(page.p3_index(), higher_level_flags);
+            let p1 = p2.next_table_create(page.p2_index(), higher_level_flags);
 
             if !p1[page.p1_index()].is_unused() {
                 error!("map_allocated_pages_to(): page {:#X} -> frame {:#X}, page was already in use!", page.start_address(), frame.start_address());
@@ -195,7 +209,7 @@ impl Mapper {
 
         Ok((
             MappedPages {
-                page_table_p4: self.target_p4.clone(),
+                page_table_p4: self.target_p4,
                 pages,
                 flags: actual_flags,
             },
@@ -207,13 +221,13 @@ impl Mapper {
     /// Maps the given virtual `AllocatedPages` to the given physical `AllocatedFrames`.
     /// 
     /// Consumes the given `AllocatedPages` and returns a `MappedPages` object which contains those `AllocatedPages`.
-    pub fn map_allocated_pages_to(
+    pub fn map_allocated_pages_to<F: Into<PteFlagsArch>>(
         &mut self,
         pages: AllocatedPages,
         frames: AllocatedFrames,
-        flags: EntryFlags,
+        flags: F,
     ) -> Result<MappedPages, &'static str> {
-        let (mapped_pages, frames) = self.internal_map_to(pages, frames, flags)?;
+        let (mapped_pages, frames) = self.internal_map_to(pages, Owned(frames), flags)?;
         
         // Currently we forget the actual `AllocatedFrames` object because
         // there is no easy/efficient way to store a dynamic list of non-contiguous frames (would require Vec).
@@ -228,25 +242,26 @@ impl Mapper {
     /// Maps the given `AllocatedPages` to randomly chosen (allocated) physical frames.
     /// 
     /// Consumes the given `AllocatedPages` and returns a `MappedPages` object which contains those `AllocatedPages`.
-    pub fn map_allocated_pages(&mut self, pages: AllocatedPages, flags: EntryFlags)
-        -> Result<MappedPages, &'static str>
-    {
-        let mut top_level_flags = flags.clone() | EntryFlags::PRESENT;
-        // P4, P3, and P2 entries should never set NO_EXECUTE, only the lowest-level P1 entry should. 
-        // top_level_flags.set(EntryFlags::WRITABLE, true); // is the same true for the WRITABLE bit?
-        top_level_flags.set(EntryFlags::NO_EXECUTE, false);
-        // Currently we cannot use the EXCLUSIVE bit for page table frames (P4, P3, P2),
-        // because another page table frame may re-use (create another alias for) it without us knowing here.
-        // Only the lowest-level P1 entry can be considered exclusive, only if it's mapped truly exclusively using this function.
-        top_level_flags.set(EntryFlags::EXCLUSIVE, false);
-        let actual_flags = flags | EntryFlags::EXCLUSIVE | EntryFlags::PRESENT;
+    pub fn map_allocated_pages<F: Into<PteFlagsArch>>(
+        &mut self,
+        pages: AllocatedPages,
+        flags: F,
+    ) -> Result<MappedPages, &'static str> {
+        let flags = flags.into();
+        let higher_level_flags = flags.adjust_for_higher_level_pte();
+
+        // Only the lowest-level P1 entry can be considered exclusive, and only because
+        // we are mapping it exclusively (to owned `AllocatedFrames`).
+        let actual_flags = flags
+            .exclusive(true)
+            .valid(true);
 
         for page in pages.deref().clone() {
             let af = frame_allocator::allocate_frames(1).ok_or("map_allocated_pages(): couldn't allocate new frame, out of memory")?;
 
-            let p3 = self.p4_mut().next_table_create(page.p4_index(), top_level_flags);
-            let p2 = p3.next_table_create(page.p3_index(), top_level_flags);
-            let p1 = p2.next_table_create(page.p2_index(), top_level_flags);
+            let p3 = self.p4_mut().next_table_create(page.p4_index(), higher_level_flags);
+            let p2 = p3.next_table_create(page.p3_index(), higher_level_flags);
+            let p1 = p2.next_table_create(page.p2_index(), higher_level_flags);
 
             if !p1[page.p1_index()].is_unused() {
                 error!("map_allocated_pages(): page {:#X} -> frame {:#X}, page was already in use!",
@@ -260,7 +275,7 @@ impl Mapper {
         }
 
         Ok(MappedPages {
-            page_table_p4: self.target_p4.clone(),
+            page_table_p4: self.target_p4,
             pages,
             flags: actual_flags,
         })
@@ -278,54 +293,23 @@ impl Mapper {
     /// in which only one virtual page can map to a given physical frame,
     /// which preserves Rust's knowledge of language-level aliasing and thus its safety checks.
     ///
-    /// As such, the pages mapped here will be marked as non-`EXCLUSIVE`, regardless of the `flags` passed in.
+    /// As such, the pages mapped here will be marked as non-exclusive,
+    /// regardless of the `flags` passed in.
+    /// This means that the `frames` they map will NOT be deallocated upon unmapping.
     /// 
-    /// Consumes the given `AllocatedPages` and returns a `MappedPages` object which contains those `AllocatedPages`.
+    /// Consumes the given `AllocatedPages` and returns a `MappedPages` object
+    /// which contains those `AllocatedPages`.
     #[doc(hidden)]
-    pub unsafe fn map_to_non_exclusive(mapper: &mut Self, pages: AllocatedPages, frames: &AllocatedFrames, flags: EntryFlags)
-        -> Result<MappedPages, &'static str>
-    {
-        let mut top_level_flags = flags.clone() | EntryFlags::PRESENT;
-        // P4, P3, and P2 entries should never set NO_EXECUTE, only the lowest-level P1 entry should. 
-        // top_level_flags.set(EntryFlags::WRITABLE, true); // is the same true for the WRITABLE bit?
-        top_level_flags.set(EntryFlags::NO_EXECUTE, false);
-        // Currently we cannot use the EXCLUSIVE bit for page table frames (P4, P3, P2),
-        // because another page table frame may re-use (create another alias for) it without us knowing here.
-        top_level_flags.set(EntryFlags::EXCLUSIVE, false);
-        // In fact, in this function, none of the frames can be mapped as exclusive
-        // because we're not accepting the `AllocatedFrames` type. 
-        let mut actual_flags = flags | EntryFlags::PRESENT;
-        actual_flags.set(EntryFlags::EXCLUSIVE, false);
-        
-
-        let pages_count = pages.size_in_pages();
-        let frames_count = frames.size_in_frames();
-        if pages_count != frames_count {
-            error!("map_to_non_exclusive(): pages {:?} count {} must equal frames {:?} count {}!", 
-                pages, pages_count, frames, frames_count
-            );
-            return Err("map_to_non_exclusive(): page count must equal frame count");
-        }
-
-        // iterate over pages and frames in lockstep
-        for (page, frame) in pages.deref().clone().into_iter().zip(frames.into_iter()) {
-            let p3 = mapper.p4_mut().next_table_create(page.p4_index(), top_level_flags);
-            let p2 = p3.next_table_create(page.p3_index(), top_level_flags);
-            let p1 = p2.next_table_create(page.p2_index(), top_level_flags);
-
-            if !p1[page.p1_index()].is_unused() {
-                error!("map_to_non_exclusive(): page {:#X} -> frame {:#X}, page was already in use!", page.start_address(), frame.start_address());
-                return Err("map_to_non_exclusive(): page was already in use");
-            } 
-
-            p1[page.p1_index()].set_entry(frame, actual_flags);
-        }
-
-        Ok(MappedPages {
-            page_table_p4: mapper.target_p4.clone(),
-            pages,
-            flags: actual_flags,
-        })
+    pub unsafe fn map_to_non_exclusive<F: Into<PteFlagsArch>>(
+        mapper: &mut Self,
+        pages: AllocatedPages,
+        frames: &AllocatedFrames,
+        flags: F,
+    ) -> Result<MappedPages, &'static str> {
+        // In this function, none of the frames can be mapped as exclusive
+        // because we're accepting a *reference* to an `AllocatedFrames`, not consuming it.
+        mapper.internal_map_to(pages, Borrowed(frames), flags)
+            .map(|(mp, _af)| mp)
     }
 }
 
@@ -344,8 +328,8 @@ pub struct MappedPages {
     page_table_p4: Frame,
     /// The range of allocated virtual pages contained by this mapping.
     pages: AllocatedPages,
-    // The EntryFlags that define the page permissions of this mapping
-    flags: EntryFlags,
+    // The PTE flags that define the page permissions of this mapping.
+    flags: PteFlagsArch,
 }
 impl Deref for MappedPages {
     type Target = PageRange;
@@ -361,12 +345,12 @@ impl MappedPages {
         MappedPages {
             page_table_p4: Frame::containing_address(PhysicalAddress::zero()),
             pages: AllocatedPages::empty(),
-            flags: EntryFlags::zero(),
+            flags: PteFlagsArch::new(),
         }
     }
 
     /// Returns the flags that describe this `MappedPages` page table permissions.
-    pub fn flags(&self) -> EntryFlags {
+    pub fn flags(&self) -> PteFlagsArch {
         self.flags
     }
 
@@ -468,19 +452,23 @@ impl MappedPages {
     /// 
     /// Returns a new `MappedPages` object with the same in-memory contents
     /// as this object, but at a completely new memory region.
-    pub fn deep_copy(&self, new_flags: Option<EntryFlags>, active_table_mapper: &mut Mapper) -> Result<MappedPages, &'static str> {
+    pub fn deep_copy<F: Into<PteFlagsArch>>(
+        &self,
+        active_table_mapper: &mut Mapper,
+        new_flags: Option<F>,
+    ) -> Result<MappedPages, &'static str> {
         warn!("MappedPages::deep_copy() has not been adequately tested yet.");
         let size_in_pages = self.size_in_pages();
 
-        use paging::allocate_pages;
+        use crate::paging::allocate_pages;
         let new_pages = allocate_pages(size_in_pages).ok_or_else(|| "Couldn't allocate_pages()")?;
 
         // we must temporarily map the new pages as Writable, since we're about to copy data into them
-        let new_flags = new_flags.unwrap_or(self.flags);
+        let new_flags = new_flags.map_or(self.flags, Into::into);
         let needs_remapping = !new_flags.is_writable(); 
         let mut new_mapped_pages = active_table_mapper.map_allocated_pages(
             new_pages, 
-            new_flags | EntryFlags::WRITABLE, // force writable
+            new_flags.writable(true), // force writable
         )?;
 
         // perform the actual copy of in-memory content
@@ -500,16 +488,23 @@ impl MappedPages {
     }
 
     
-    /// Change the permissions (`new_flags`) of this `MappedPages`'s page table entries.
+    /// Change the mapping flags of this `MappedPages`'s page table entries.
     ///
     /// Note that attempting to change certain "reserved" flags will have no effect. 
-    /// For example, arbitrarily setting the `EXCLUSIVE` bit would cause unsafety, so it cannot be changed.
-    pub fn remap(&mut self, active_table_mapper: &mut Mapper, new_flags: EntryFlags) -> Result<(), &'static str> {
+    /// For example, the `EXCLUSIVE` flag cannot be changed beause arbitrarily setting it
+    /// would violate safety.
+    pub fn remap<F: Into<PteFlagsArch>>(
+        &mut self,
+        active_table_mapper: &mut Mapper,
+        new_flags: F,
+    ) -> Result<(), &'static str> {
         if self.size_in_pages() == 0 { return Ok(()); }
 
-        // Use the existing value of the `EXCLUSIVE` flag rather than whatever value was passed in.
-        let mut new_flags = new_flags;
-        new_flags.set(EntryFlags::EXCLUSIVE, self.flags.is_exclusive());
+        // Use the existing value of the `EXCLUSIVE` flag, ignoring whatever value was passed in.
+        // Also ensure these flags are PRESENT (valid), since they are currently being mapped.
+        let new_flags = new_flags.into()
+            .exclusive(self.flags.is_exclusive())
+            .valid(true);
 
         if new_flags == self.flags {
             trace!("remap(): new_flags were the same as existing flags, doing nothing.");
@@ -523,7 +518,7 @@ impl MappedPages {
                 .and_then(|p2| p2.next_table_mut(page.p2_index()))
                 .ok_or("mapping code does not support huge pages")?;
             
-            p1[page.p1_index()].set_flags(new_flags | EntryFlags::PRESENT);
+            p1[page.p1_index()].set_flags(new_flags);
 
             tlb_flush_virt_addr(page.start_address());
         }
@@ -683,7 +678,7 @@ impl MappedPages {
     /// # Arguments
     /// * `byte_offset`: the offset (in number of bytes) from the beginning of the memory region
     ///    at which the struct is located (where it should start).
-    ///    This `offset` must be properly aligned with respect to the alignment requirements
+    ///    This offset must be properly aligned with respect to the alignment requirements
     ///    of type `T`, otherwise an error will be returned.
     /// 
     /// Returns a reference to the new struct (`&T`) that is formed from the underlying memory region,
@@ -785,7 +780,7 @@ impl MappedPages {
     /// # Arguments
     /// * `byte_offset`: the offset (in number of bytes) into the memory region
     ///    at which the slice should start.
-    ///    This `byte_offset` must be properly aligned with respect to the alignment requirements
+    ///    This offset must be properly aligned with respect to the alignment requirements
     ///    of type `T`, otherwise an error will be returned.
     /// * `length`: the length of the slice, i.e., the number of elements of type `T` in the slice. 
     ///    Thus, the slice's address bounds will span the range from
@@ -901,6 +896,40 @@ impl MappedPages {
 
         Ok(slc)
     }
+
+    /// A convenience function for [`BorrowedMappedPages::from()`].
+    pub fn into_borrowed<T: FromBytes>(
+        self,
+        byte_offset: usize,
+    ) -> Result<BorrowedMappedPages<T, Immutable>, (MappedPages, &'static str)> {
+        BorrowedMappedPages::from(self, byte_offset)
+    }
+
+    /// A convenience function for [`BorrowedMappedPages::from_mut()`].
+    pub fn into_borrowed_mut<T: FromBytes>(
+        self,
+        byte_offset: usize,
+    ) -> Result<BorrowedMappedPages<T, Mutable>, (MappedPages, &'static str)> {
+        BorrowedMappedPages::from_mut(self, byte_offset)
+    }
+
+    /// A convenience function for [`BorrowedSliceMappedPages::from()`].
+    pub fn into_borrowed_slice<T: FromBytes>(
+        self,
+        byte_offset: usize,
+        length: usize,
+    ) -> Result<BorrowedSliceMappedPages<T, Immutable>, (MappedPages, &'static str)> {
+        BorrowedSliceMappedPages::from(self, byte_offset, length)
+    }
+
+    /// A convenience function for [`BorrowedSliceMappedPages::from_mut()`].
+    pub fn into_borrowed_slice_mut<T: FromBytes>(
+        self,
+        byte_offset: usize,
+        length: usize,
+    ) -> Result<BorrowedSliceMappedPages<T, Mutable>, (MappedPages, &'static str)> {
+        BorrowedSliceMappedPages::from_mut(self, byte_offset, length)
+    }
 }
 
 impl Drop for MappedPages {
@@ -920,116 +949,280 @@ impl Drop for MappedPages {
 }
 
 
-// Exposing private functions to the spillful mapper for benchmarking purposes.
-#[cfg(mapper_spillful)]
-pub fn mapped_pages_unmap(
-    mapped_pages: &mut MappedPages,
-    mapper: &mut Mapper,
-) -> Result<(), &'static str> {
-    mapped_pages.unmap(mapper)?;
-    Ok(())
-}
-
-#[cfg(mapper_spillful)]
-pub fn mapper_from_current() -> Mapper {
-    Mapper::from_current()
-}
-
-
-/// An immutably borrowed [`MappedPages`] object that derefs to `&T`.
+/// A borrowed [`MappedPages`] object that derefs to `&T` and optionally also `&mut T`.
+/// 
+/// By default, the `Mutability` type parameter is `Immutable` for ease of use.
 ///
 /// When dropped, the borrow ends and the contained `MappedPages` is dropped and unmapped.
-pub struct BorrowedMappedPages<T: FromBytes> {
-    ptr: NonNull<T>,
+/// You can manually end the borrow and reclaim the inner `MappedPages` via [`Self::into_inner()`].
+pub struct BorrowedMappedPages<T: FromBytes, M: Mutability = Immutable> {
+    ptr: Unique<T>,
     mp: MappedPages,
+    _mut: PhantomData<M>,
 }
-impl<T: FromBytes> Deref for BorrowedMappedPages<T> {
-    type Target = T;
-    fn deref(&self) -> &T {
-        // SAFETY:
-        // ✅ The pointer is properly aligned, as its alignment has been checked in `MappedPages::as_type()`.
-        // ✅ The pointer is dereferenceable, as it has been bounds checked by `MappedPages::as_type()`.
-        // ✅ The pointer has been initialized in the constructor `try_into_borrowed()`.
-        // ✅ The lifetime of the returned reference `&T` is tied to the lifetime of the `MappedPages`,
-        //    ensuring that the `MappedPages` object will persist at least as long as the reference.
-        unsafe { self.ptr.as_ref() }
-    }
-}
-impl<T: FromBytes> BorrowedMappedPages<T> {
+
+impl<T: FromBytes> BorrowedMappedPages<T, Immutable> {
     /// Immutably borrows the given `MappedPages` as an instance of type `&T` 
-    /// starting at the given `offset` into the `MappedPages`.
+    /// located at the given `byte_offset` into the `MappedPages`.
     ///
     /// See [`MappedPages::as_type()`] for more info.
     ///
-    /// Returns an error containing the unmodified `MappedPages` and a string
+    /// Upon failure, returns an error containing the unmodified `MappedPages` and a string
     /// describing the error.
-    pub fn try_into_borrowed(
+    pub fn from(
         mp: MappedPages,
-        offset: usize,
+        byte_offset: usize,
     ) -> Result<BorrowedMappedPages<T>, (MappedPages, &'static str)> {
-        let borrowed_mp = BorrowedMappedPages {
-            ptr: match mp.as_type::<T>(offset) {
+        Ok(Self {
+            ptr: match mp.as_type::<T>(byte_offset) {
+                Ok(r) => {
+                    let nn: NonNull<T> = r.into();
+                    nn.into()
+                }
+                Err(e_str) => return Err((mp, e_str)),
+            },
+            mp,
+            _mut: PhantomData,
+        })
+    }
+}
+
+impl<T: FromBytes> BorrowedMappedPages<T, Mutable> {
+    /// Mutably borrows the given `MappedPages` as an instance of type `&mut T` 
+    /// located at the given `byte_offset` into the `MappedPages`.
+    /// 
+    /// See [`MappedPages::as_type_mut()`] for more info.
+    /// 
+    /// Upon failure, returns an error containing the unmodified `MappedPages`
+    /// and a string describing the error.
+    pub fn from_mut(
+        mut mp: MappedPages,
+        byte_offset: usize,
+    ) -> Result<BorrowedMappedPages<T, Mutable>, (MappedPages, &'static str)> {
+        Ok(Self {
+            ptr: match mp.as_type_mut::<T>(byte_offset) {
                 Ok(r) => r.into(),
                 Err(e_str) => return Err((mp, e_str)),
             },
             mp,
-        };
-        Ok(borrowed_mp)
+            _mut: PhantomData,
+        })
     }
+}
 
-    /// Consumes this `BorrowedMappedPages` and returns the inner `MappedPages`.
+impl<T: FromBytes, M: Mutability> BorrowedMappedPages<T, M> {
+    /// Consumes this object and returns the inner `MappedPages`.
     pub fn into_inner(self) -> MappedPages {
         self.mp
     }
 }
 
-/// A mutably borrowed `MappedPages` object that derefs to `&T` and `&mut T`.
-///
-/// When dropped, the borrow ends and the contained `MappedPages` is dropped and unmapped.
-pub struct BorrowedMutMappedPages<T: FromBytes> {
-    ptr: NonNull<T>,
-    mp: MappedPages,
-}
-impl<T: FromBytes> Deref for BorrowedMutMappedPages<T> {
+/// Both [`Mutable`] and [`Immutable`] [`BorrowedMappedPages`] can deref into `&T`.
+impl<T: FromBytes, M: Mutability> Deref for BorrowedMappedPages<T, M> {
     type Target = T;
     fn deref(&self) -> &T {
         // SAFETY:
-        // ✅ Same as `BorrowedMappedPages<T>`.
+        // ✅ The pointer is properly aligned; its alignment has been checked in `MappedPages::as_type()`.
+        // ✅ The pointer is dereferenceable; it has been bounds checked by `MappedPages::as_type()`.
+        // ✅ The pointer has been initialized in the constructor `from()`.
+        // ✅ The lifetime of the returned reference `&T` is tied to the lifetime of the `MappedPages`,
+        //     ensuring that the `MappedPages` object will persist at least as long as the reference.
         unsafe { self.ptr.as_ref() }
     }
 }
-impl<T: FromBytes> core::ops::DerefMut for BorrowedMutMappedPages<T> {
+/// Only [`Mutable`] [`BorrowedMappedPages`] can deref into `&mut T`.
+impl<T: FromBytes> DerefMut for BorrowedMappedPages<T, Mutable> {
     fn deref_mut(&mut self) -> &mut T {
         // SAFETY:
-        // ✅ Same as `BorrowedMappedPages<T>`, plus:
+        // ✅ Same as the above `Deref` block, plus:
         // ✅ The underlying `MappedPages` is guaranteed to be writable by `MappedPages::as_type_mut()`.
         unsafe { self.ptr.as_mut() }
     }
 }
-impl<T: FromBytes> BorrowedMutMappedPages<T> {
+/// Both [`Mutable`] and [`Immutable`] [`BorrowedMappedPages`] implement `AsRef<T>`.
+impl<T: FromBytes, M: Mutability> AsRef<T> for BorrowedMappedPages<T, M> {
+    fn as_ref(&self) -> &T { self.deref() }
+}
+/// Only [`Mutable`] [`BorrowedMappedPages`] implement `AsMut<T>`.
+impl<T: FromBytes> AsMut<T> for BorrowedMappedPages<T, Mutable> {
+    fn as_mut(&mut self) -> &mut T { self.deref_mut() }
+}
+/// Both [`Mutable`] and [`Immutable`] [`BorrowedMappedPages`] implement `Borrow<T>`.
+impl<T: FromBytes, M: Mutability> Borrow<T> for BorrowedMappedPages<T, M> {
+    fn borrow(&self) -> &T { self.deref() }
+}
+/// Only [`Mutable`] [`BorrowedMappedPages`] implement `BorrowMut<T>`.
+impl<T: FromBytes> BorrowMut<T> for BorrowedMappedPages<T, Mutable> {
+    fn borrow_mut(&mut self) -> &mut T { self.deref_mut() }
+}
+
+// Forward the impls of `PartialEq`, `Eq`, `PartialOrd`, `Ord`, and `Hash`.
+impl<T: FromBytes + PartialEq, M: Mutability> PartialEq for BorrowedMappedPages<T, M> {
+    fn eq(&self, other: &Self) -> bool { self.deref().eq(other.deref()) }
+}
+impl<T: FromBytes + Eq, M: Mutability> Eq for BorrowedMappedPages<T, M> { }
+impl<T: FromBytes + PartialOrd, M: Mutability> PartialOrd for BorrowedMappedPages<T, M> {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> { self.deref().partial_cmp(other.deref()) }
+}
+impl<T: FromBytes + Ord, M: Mutability> Ord for BorrowedMappedPages<T, M> {
+    fn cmp(&self, other: &Self) -> Ordering { self.deref().cmp(other.deref()) }
+}
+impl<T: FromBytes + Hash, M: Mutability> Hash for BorrowedMappedPages<T, M> {
+    fn hash<H: Hasher>(&self, state: &mut H) { self.deref().hash(state) }
+}
+
+
+/// A borrowed [`MappedPages`] object that derefs to a slice `&[T]` and optionally also `&mut [T]`.
+/// 
+/// For ease of use, the default `Mutability` type parameter is `Immutable`.
+///
+/// When dropped, the borrow ends and the contained `MappedPages` is dropped and unmapped.
+/// You can manually end the borrow and reclaim the inner `MappedPages` via [`Self::into_inner()`].
+pub struct BorrowedSliceMappedPages<T: FromBytes, M: Mutability = Immutable> {
+    ptr: Unique<[T]>,
+    mp: MappedPages,
+    _mut: PhantomData<M>,
+}
+
+impl<T: FromBytes> BorrowedSliceMappedPages<T, Immutable> {
+    /// Immutably borrows the given `MappedPages` as a slice `&[T]`
+    /// of `length` elements of type `T` starting at the given `byte_offset` into the `MappedPages`.
+    ///
+    /// See [`MappedPages::as_slice()`] for more info.
+    ///
+    /// Upon failure, returns an error containing the unmodified `MappedPages` and a string
+    /// describing the error.
+    pub fn from(
+        mp: MappedPages,
+        byte_offset: usize,
+        length: usize,
+    ) -> Result<BorrowedSliceMappedPages<T>, (MappedPages, &'static str)> {
+        Ok(Self {
+            ptr: match mp.as_slice::<T>(byte_offset, length) {
+                Ok(r) => {
+                    let nn: NonNull<[T]> = r.into();
+                    nn.into()
+                }
+                Err(e_str) => return Err((mp, e_str)),
+            },
+            mp,
+            _mut: PhantomData,
+        })
+    }
+}
+
+impl<T: FromBytes> BorrowedSliceMappedPages<T, Mutable> {
     /// Mutably borrows the given `MappedPages` as an instance of type `&mut T` 
-    /// starting at the given `offset` into the `MappedPages`.
+    /// starting at the given `byte_offset` into the `MappedPages`.
     /// 
     /// See [`MappedPages::as_type_mut()`] for more info.
     /// 
-    /// Returns an error containing the unmodified `MappedPages` and a string
-    /// describing the error.
-    pub fn try_into_borrowed_mut(
+    /// Upon failure, returns an error containing the unmodified `MappedPages`
+    /// and a string describing the error.
+    pub fn from_mut(
         mut mp: MappedPages,
-        offset: usize,
-    ) -> Result<BorrowedMutMappedPages<T>, (MappedPages, &'static str)> {
-        let borrowed_mp = BorrowedMutMappedPages {
-            ptr: match mp.as_type_mut::<T>(offset) {
+        byte_offset: usize,
+        length: usize,
+    ) -> Result<Self, (MappedPages, &'static str)> {
+        Ok(Self {
+            ptr: match mp.as_slice_mut::<T>(byte_offset, length) {
                 Ok(r) => r.into(),
                 Err(e_str) => return Err((mp, e_str)),
             },
             mp,
-        };
-        Ok(borrowed_mp)
+            _mut: PhantomData,
+        })
     }
+}
 
-    /// Consumes this `BorrowedMutMappedPages` and returns the inner `MappedPages`.
+impl<T: FromBytes, M: Mutability> BorrowedSliceMappedPages<T, M> {
+    /// Consumes this object and returns the inner `MappedPages`.
     pub fn into_inner(self) -> MappedPages {
         self.mp
     }
+}
+
+/// Both [`Mutable`] and [`Immutable`] [`BorrowedSliceMappedPages`] can deref into `&[T]`.
+impl<T: FromBytes, M: Mutability> Deref for BorrowedSliceMappedPages<T, M> {
+    type Target = [T];
+    fn deref(&self) -> &[T] {
+        // SAFETY:
+        // ✅ The pointer is properly aligned; its alignment has been checked in `MappedPages::as_slice()`.
+        // ✅ The pointer is dereferenceable; it has been bounds checked by `MappedPages::as_slice()`.
+        // ✅ The pointer has been initialized in the constructor `from()`.
+        // ✅ The lifetime of the returned reference `&[T]` is tied to the lifetime of the `MappedPages`,
+        //     ensuring that the `MappedPages` object will persist at least as long as the reference.
+        unsafe { self.ptr.as_ref() }
+    }
+}
+/// Only [`Mutable`] [`BorrowedSliceMappedPages`] can deref into `&mut T`.
+impl<T: FromBytes> DerefMut for BorrowedSliceMappedPages<T, Mutable> {
+    fn deref_mut(&mut self) -> &mut [T] {
+        // SAFETY:
+        // ✅ Same as the above `Deref` block, plus:
+        // ✅ The underlying `MappedPages` is guaranteed to be writable by `MappedPages::as_slice_mut()`.
+        unsafe { self.ptr.as_mut() }
+    }
+}
+
+/// Both [`Mutable`] and [`Immutable`] [`BorrowedSliceMappedPages`] implement `AsRef<[T]>`.
+impl<T: FromBytes, M: Mutability> AsRef<[T]> for BorrowedSliceMappedPages<T, M> {
+    fn as_ref(&self) -> &[T] { self.deref() }
+}
+/// Only [`Mutable`] [`BorrowedSliceMappedPages`] implement `AsMut<T>`.
+impl<T: FromBytes> AsMut<[T]> for BorrowedSliceMappedPages<T, Mutable> {
+    fn as_mut(&mut self) -> &mut [T] { self.deref_mut() }
+}
+/// Both [`Mutable`] and [`Immutable`] [`BorrowedSliceMappedPages`] implement `Borrow<T>`.
+impl<T: FromBytes, M: Mutability> Borrow<[T]> for BorrowedSliceMappedPages<T, M> {
+    fn borrow(&self) -> &[T] { self.deref() }
+}
+/// Only [`Mutable`] [`BorrowedSliceMappedPages`] implement `BorrowMut<T>`.
+impl<T: FromBytes> BorrowMut<[T]> for BorrowedSliceMappedPages<T, Mutable> {
+    fn borrow_mut(&mut self) -> &mut [T] { self.deref_mut() }
+}
+
+// Forward the impls of `PartialEq`, `Eq`, `PartialOrd`, `Ord`, and `Hash`.
+impl<T: FromBytes + PartialEq, M: Mutability> PartialEq for BorrowedSliceMappedPages<T, M> {
+    fn eq(&self, other: &Self) -> bool { self.deref().eq(other.deref()) }
+}
+impl<T: FromBytes + Eq, M: Mutability> Eq for BorrowedSliceMappedPages<T, M> { }
+impl<T: FromBytes + PartialOrd, M: Mutability> PartialOrd for BorrowedSliceMappedPages<T, M> {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> { self.deref().partial_cmp(other.deref()) }
+}
+impl<T: FromBytes + Ord, M: Mutability> Ord for BorrowedSliceMappedPages<T, M> {
+    fn cmp(&self, other: &Self) -> Ordering { self.deref().cmp(other.deref()) }
+}
+impl<T: FromBytes + Hash, M: Mutability> Hash for BorrowedSliceMappedPages<T, M> {
+    fn hash<H: Hasher>(&self, state: &mut H) { self.deref().hash(state) }
+}
+
+
+/// A marker type used to indicate that a [`BorrowedMappedPages`]
+/// or [`BorrowedSliceMappedPages`] is borrowed mutably.
+/// 
+/// Implements the [`Mutability`] trait. 
+#[non_exhaustive]
+pub struct Mutable { }
+
+/// A marker type used to indicate that a [`BorrowedMappedPages`]
+/// or [`BorrowedSliceMappedPages`] is borrowed immutably.
+/// 
+/// Implements the [`Mutability`] trait.
+#[non_exhaustive]
+pub struct Immutable { }
+
+/// A trait for parameterizing a [`BorrowedMappedPages`]
+/// or [`BorrowedSliceMappedPages`] as mutably or immutably borrowed.
+/// 
+/// Only [`Mutable`] and [`Immutable`] are able to implement this trait.
+pub trait Mutability: private::Sealed { }
+
+impl private::Sealed for Immutable { }
+impl private::Sealed for Mutable { }
+impl Mutability for Immutable { }
+impl Mutability for Mutable { }
+
+mod private {
+    pub trait Sealed { }
 }

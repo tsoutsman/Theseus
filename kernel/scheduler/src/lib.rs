@@ -1,7 +1,5 @@
 #![no_std]
 
-#[macro_use] extern crate log;
-
 cfg_if::cfg_if! {
     if #[cfg(priority_scheduler)] {
         extern crate scheduler_priority as scheduler;
@@ -12,8 +10,7 @@ cfg_if::cfg_if! {
     }
 }
 
-use apic::get_my_apic_id;
-use task::{get_my_current_task, TaskRef};
+use task::TaskRef;
 
 /// Yields the current CPU by selecting a new `Task` to run 
 /// and then switching to that new `Task`.
@@ -30,32 +27,23 @@ pub fn schedule() -> bool {
     // If preemption was not previously enabled (before we disabled it above),
     // then we shouldn't perform a task switch here.
     if !preemption_guard.preemption_was_enabled() {
-        // trace!("Note: preemption was disabled on CPU {}, skipping scheduler.", get_my_apic_id());
+        // trace!("Note: preemption was disabled on CPU {}, skipping scheduler.", current_cpu());
         return false;
     }
 
-    let apic_id = get_my_apic_id();
+    let cpu_id = preemption_guard.cpu_id();
 
-    let curr_task = if let Some(curr) = get_my_current_task() {
-        curr
-    } else {
-        error!("BUG: schedule(): could not get current task.");
+    let Some(next_task) = scheduler::select_next_task(cpu_id) else {
         return false; // keep running the same current task
     };
 
-    let next_task = if let Some(next) = scheduler::select_next_task(apic_id) {
-        next
-    } else {
-        return false; // keep running the same current task
-    };
-
-    let (did_switch, recovered_preemption_guard) = curr_task.task_switch(
+    let (did_switch, recovered_preemption_guard) = task::task_switch(
         next_task,
-        apic_id,
+        cpu_id,
         preemption_guard,
     ); 
 
-    // trace!("AFTER TASK_SWITCH CALL (AP {}) new current: {:?}, interrupts are {}", apic_id, get_my_current_task(), irq_safety::interrupts_enabled());
+    // trace!("AFTER TASK_SWITCH CALL (CPU {}) new current: {:?}, interrupts are {}", cpu_id, task::get_my_current_task(), irq_safety::interrupts_enabled());
 
     drop(recovered_preemption_guard);
     did_switch

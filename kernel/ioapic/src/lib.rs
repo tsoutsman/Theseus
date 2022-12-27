@@ -1,23 +1,17 @@
 #![no_std]
 
-
-extern crate alloc;
 #[macro_use] extern crate log;
 extern crate spin;
 extern crate memory;
 extern crate volatile;
 extern crate zerocopy;
 extern crate atomic_linked_list;
-extern crate owning_ref;
 
-
-use alloc::boxed::Box;
 use spin::{Mutex, MutexGuard};
 use volatile::{Volatile, WriteOnly};
 use zerocopy::FromBytes;
-use memory::{PageTable, PhysicalAddress, EntryFlags, allocate_pages, allocate_frames_at, MappedPages};
+use memory::{PageTable, PhysicalAddress, PteFlags, allocate_pages, allocate_frames_at, BorrowedMappedPages, Mutable};
 use atomic_linked_list::atomic_map::AtomicMap;
-use owning_ref::BoxRefMut;
 
 
 /// The system-wide list of all `IoApic`s, of which there is usually one, 
@@ -62,7 +56,7 @@ const INTERRUPT_ENTRIES_PER_IOAPIC: u32 = 24;
 
 /// A representation of an IoApic (x86-specific interrupt chip for I/O devices).
 pub struct IoApic {
-    regs: BoxRefMut<MappedPages, IoApicRegisters>,
+    regs: BorrowedMappedPages<IoApicRegisters, Mutable>,
     /// The ID of this IoApic.
     pub id: u8,
     /// not yet used.
@@ -82,15 +76,15 @@ impl IoApic {
         let ioapic_mapped_page = page_table.map_allocated_pages_to(
             new_page,
             frame, 
-            EntryFlags::PRESENT | EntryFlags::WRITABLE | EntryFlags::NO_CACHE | EntryFlags::NO_EXECUTE, 
+            PteFlags::new().valid(true).writable(true).device_memory(true),
         )?;
 
-        let ioapic_regs = BoxRefMut::new(Box::new(ioapic_mapped_page)).try_map_mut(|mp| mp.as_type_mut::<IoApicRegisters>(0))?;
+        let ioapic_regs = ioapic_mapped_page.into_borrowed_mut(0).map_err(|(_mp, err)| err)?;
         let ioapic = IoApic {
             regs: ioapic_regs,
-			id: id,
+			id,
             _phys_addr: phys_addr,
-            gsi_base: gsi_base,
+            gsi_base,
 		};
 
         debug!("Created new IoApic, id: {}, gsi_base: {}, phys_addr: {:#X}", id, gsi_base, phys_addr);
@@ -152,8 +146,6 @@ impl IoApic {
     ///    (see [`interrupts::IRQ_BASE_OFFSET`](../interrupts/constant.IRQ_BASE_OFFSET.html)).
     ///    For example, 0x20 is the PIT timer, 0x21 is the PS2 keyboard, etc.
     pub fn set_irq(&mut self, ioapic_irq: u8, lapic_id: u8, irq_vector: u8) {
-        let vector = irq_vector as u8;
-
         let low_index: u32 = 0x10 + (ioapic_irq as u32) * 2;
         let high_index: u32 = 0x10 + (ioapic_irq as u32) * 2 + 1;
 
@@ -167,7 +159,7 @@ impl IoApic {
         low &= !(1<<11);
         low &= !0x700;
         low &= !0xff;
-        low |= vector as u32;
+        low |= irq_vector as u32;
         self.write_reg(low_index, low);
     }
 }
