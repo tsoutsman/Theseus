@@ -91,6 +91,7 @@ struct Job {
 
 /// A main function that spawns a new shell and waits for the shell loop to exit before returning an exit value
 pub fn main(_args: Vec<String>) -> isize {
+    log::info!("SPAWNING SHELL");
     {
         let _task_ref = match spawn::new_task_builder(shell_loop, ())
             .name("shell_loop".to_string())
@@ -106,8 +107,8 @@ pub fn main(_args: Vec<String>) -> isize {
 
     // block this task, because it never needs to actually run again
     task::with_current_task(|t| t.block())
-        .expect("shell::main(): failed to get current task")
-        .expect("shell:main(): failed to block the main shell task");
+     .expect("shell::main(): failed to get current task")
+     .expect("shell:main(): failed to block the main shell task");
     scheduler::schedule();
 
     loop {

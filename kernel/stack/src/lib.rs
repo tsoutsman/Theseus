@@ -16,6 +16,20 @@ use memory_structs::VirtualAddress;
 use memory::{PteFlags, MappedPages, Mapper};
 use page_allocator::AllocatedPages;
 
+/// Allocates a new stack and maps it to the active page table. 
+///
+/// This also reserves an unmapped guard page beneath the bottom of the stack
+/// in order to catch stack overflows. 
+///
+/// Returns the newly-allocated stack and a VMA to represent its mapping.
+pub fn alloc_stack_eagerly(
+    size_in_pages: usize,
+    page_table: &mut Mapper, 
+) -> Option<Stack> {
+    // Allocate enough pages for an additional guard page. 
+    let pages = page_allocator::allocate_pages(size_in_pages + 1)?;
+    inner_alloc_stack(pages, page_table, true)
+}
 
 /// Allocates a new stack and maps it to the active page table. 
 ///
@@ -29,7 +43,7 @@ pub fn alloc_stack(
 ) -> Option<Stack> {
     // Allocate enough pages for an additional guard page. 
     let pages = page_allocator::allocate_pages(size_in_pages + 1)?;
-    inner_alloc_stack(pages, page_table)
+    inner_alloc_stack(pages, page_table, false)
 }
 
 /// The inner implementation of stack allocation. 
@@ -39,6 +53,7 @@ pub fn alloc_stack(
 fn inner_alloc_stack(
     pages: AllocatedPages,
     page_table: &mut Mapper, 
+    eagerly: bool,
 ) -> Option<Stack> {
     let start_of_stack_pages = *pages.start() + 1; 
     let (guard_page, stack_pages) = pages.split(start_of_stack_pages).ok()?;
@@ -47,7 +62,13 @@ fn inner_alloc_stack(
     let flags = PteFlags::new().writable(true);
 
     // Map stack pages to physical frames, leave the guard page unmapped.
-    let pages = match page_table.map_allocated_pages(stack_pages, flags) {
+    let f = if eagerly {
+        Mapper::map_allocated_pages_eagerly
+    } else {
+        Mapper::map_allocated_pages
+    };
+
+    let pages = match f(page_table, stack_pages, flags) {
         Ok(pages) => pages,
         Err(e) => {
             error!("alloc_stack(): couldn't map pages for the new Stack, error: {}", e);

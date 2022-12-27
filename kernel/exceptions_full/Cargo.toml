@@ -52,5 +52,11 @@ path = "../debug_info"
 [dependencies.signal_handler]
 path = "../signal_handler"
 
+[dependencies.halt]
+path = "../halt"
+
+[dependencies.demand_paging]
+path = "../demand_paging"
+
 [lib]
 crate-type = ["rlib"]

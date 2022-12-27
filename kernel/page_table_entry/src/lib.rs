@@ -94,6 +94,10 @@ impl PageTableEntry {
         self.0 = (frame.start_address().value() as u64) | flags.bits();
     }
 
+    pub fn set_fake_entry(&mut self, flags: PteFlagsArch) {
+        self.0 = 0 | flags.bits();
+    }
+
     /// Sets the flags components of this `PageTableEntry` to `new_flags`.
     ///
     /// This does not modify the frame part of the page table entry.

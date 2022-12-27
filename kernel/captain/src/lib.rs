@@ -48,6 +48,8 @@ extern crate tlb_shootdown;
 extern crate multiple_heaps;
 extern crate console;
 #[cfg(simd_personality)] extern crate simd_personality;
+extern crate time;
+extern crate runqueue;
 
 
 use alloc::vec::Vec;
@@ -107,9 +109,9 @@ pub fn init(
     let (double_fault_stack, privilege_stack) = {
         let mut kernel_mmi = kernel_mmi_ref.lock();
         (
-            stack::alloc_stack(KERNEL_STACK_SIZE_IN_PAGES, &mut kernel_mmi.page_table)
+            stack::alloc_stack_eagerly(KERNEL_STACK_SIZE_IN_PAGES, &mut kernel_mmi.page_table)
                 .ok_or("could not allocate double fault stack")?,
-            stack::alloc_stack(1, &mut kernel_mmi.page_table)
+            stack::alloc_stack_eagerly(1, &mut kernel_mmi.page_table)
                 .ok_or("could not allocate privilege stack")?,
         )
     };
@@ -188,6 +190,11 @@ pub fn init(
     spawn::cleanup_bootstrap_tasks(cpu_count as usize)?;
     // 4. "Finish" this bootstrap task, indicating it has exited and no longer needs to run.
     bootstrap_task.finish();
+    let x = time::now::<time::Monotonic>();
+    while time::now::<time::Monotonic>().duration_since(x) < time::Duration::from_secs(5) {}
+    for i in 0..=3 {
+        log::info!("{:#?}", *runqueue::get_runqueue(i).unwrap().read());
+    }
     // 5. Enable interrupts such that other tasks can be scheduled in.
     enable_interrupts();
     // ****************************************************

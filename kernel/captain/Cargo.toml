@@ -103,5 +103,11 @@ path = "../task_fs"
 [dependencies.multiple_heaps]
 path = "../multiple_heaps"
 
+[dependencies.time]
+path = "../time"
+
+[dependencies.runqueue]
+path = "../runqueue"
+
 [lib]
 crate-type = ["rlib"]

@@ -23,6 +23,7 @@ impl LockedIdt {
 
     /// Obtains the lock on the inner IDT and loads it into the current CPU
     /// using the `lidt` command.
+    #[inline(always)]
     pub fn load(&'static self) {
         unsafe { self.idt.lock().load_unsafe(); }
     } 

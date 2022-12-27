@@ -1,0 +1,17 @@
+[package]
+name = "halt"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+app_io = { path = "../app_io" }
+debug_info = { path = "../debug_info" }
+fault_log = { path = "../fault_log" }
+log = "0.4.8"
+memory_structs = { path = "../memory_structs" }
+signal_handler = { path = "../signal_handler" }
+stack_trace = { path = "../stack_trace" }
+task = { path = "../task" }
+unwind = { path = "../unwind" }
+vga_buffer = { path = "../vga_buffer" }
+x86_64 = "0.14.8"

@@ -4,12 +4,8 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-exceptions_full = { path = "../exceptions_full" }
-hashbrown = "*"
-irq_safety = { git = "https://github.com/theseus-os/irq_safety" }
+frame_allocator = { path = "../frame_allocator" }
+halt = { path = "../halt" }
+log = "0.4"
 memory = { path = "../memory" }
 x86_64 = "0.14"
-
-[dependencies.lazy_static]
-version = "*"
-features = ["spin_no_std"]

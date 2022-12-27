@@ -467,8 +467,10 @@ impl Task {
             .map_err(|_| "Task::new(): `parent_task` wasn't provided, and couldn't get current task")?;
 
         let kstack = kstack
-            .or_else(|| stack::alloc_stack(KERNEL_STACK_SIZE_IN_PAGES, &mut mmi.lock().page_table))
+            // FIXME
+            .or_else(|| stack::alloc_stack_eagerly(KERNEL_STACK_SIZE_IN_PAGES, &mut mmi.lock().page_table))
             .ok_or("couldn't allocate kernel stack!")?;
+        log::info!("{kstack:#0x?}");
 
         Ok(Task::new_internal(kstack, mmi, namespace, env, app_crate, failure_cleanup_function))
     }

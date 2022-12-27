@@ -219,7 +219,7 @@ pub fn handle_ap_cores(
                     .and_then(|bsp_id| all_lapics.get(&bsp_id))
                     .ok_or("Couldn't get BSP's LocalApic!")?;
                 let mut bsp_lapic = bsp_lapic_ref.write();
-                let ap_stack = stack::alloc_stack(
+                let ap_stack = stack::alloc_stack_eagerly(
                     KERNEL_STACK_SIZE_IN_PAGES,
                     &mut kernel_mmi_ref.lock().page_table,
                 ).ok_or("could not allocate AP stack!")?;

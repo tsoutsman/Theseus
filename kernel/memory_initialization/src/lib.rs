@@ -84,7 +84,7 @@ pub fn init_memory_management(
     let heap_mapped_pages = {
         let pages = memory::allocate_pages_by_bytes_at(VirtualAddress::new_canonical(heap_start), heap_initial_size)?;
         debug!("Initial heap starts at: {:#X}, size: {:#X}, pages: {:?}", heap_start, heap_initial_size, pages);
-        let heap_mp = page_table.map_allocated_pages(pages, HEAP_FLAGS).map_err(|e| {
+        let heap_mp = page_table.map_allocated_pages_eagerly(pages, HEAP_FLAGS).map_err(|e| {
             error!("Failed to map kernel heap memory pages, {} bytes starting at virtual address {:#X}. Error: {:?}",
                 KERNEL_HEAP_INITIAL_SIZE, KERNEL_HEAP_START, e
             );

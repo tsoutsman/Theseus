@@ -121,6 +121,8 @@ bitflags! {
         // This DOES require a conversion for aarch64, but not for x86_64.
         const _GLOBAL = GLOBAL_BIT.bits();
 
+        const REQUESTED = PteFlagsArch::REQUESTED.bits();
+
         /// * If set, this page is not executable.
         /// * If not set, this page is executable.
         //
@@ -277,6 +279,12 @@ impl PteFlags {
         self
     }
 
+    #[must_use]
+    pub fn requested(mut self, enable: bool) -> Self {
+        self.set(Self::REQUESTED, enable);
+        self
+    }
+
     #[doc(alias("present"))]
     pub const fn is_valid(&self) -> bool {
         self.contains(Self::VALID)
@@ -307,5 +315,9 @@ impl PteFlags {
 
     pub const fn is_exclusive(&self) -> bool {
         self.contains(Self::EXCLUSIVE)
+    }
+
+    pub const fn is_requested(&self) -> bool {
+        self.contains(Self::REQUESTED)
     }
 }

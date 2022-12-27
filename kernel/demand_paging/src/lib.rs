@@ -3,56 +3,55 @@
 
 extern crate alloc;
 
-use alloc::boxed::Box;
-use core::arch::asm;
-use hashbrown::HashMap;
-use irq_safety::MutexIrqSafe;
-use memory::VirtualAddress;
+use memory::{Mapper, Page, VirtualAddress};
 use x86_64::{
     registers::control::Cr2,
     structures::idt::{InterruptStackFrame, PageFaultErrorCode},
 };
 
-lazy_static::lazy_static! {
-    static ref REQUESTED_PAGES: MutexIrqSafe<
-        // TODO: Use page size
-        HashMap<VirtualAddress, Box<dyn FnOnce() -> [u8; 4096] + Send>>,
-    > = MutexIrqSafe::new(HashMap::new());
-}
-
-extern "x86-interrupt" fn page_fault_handler(
+pub extern "x86-interrupt" fn page_fault_handler(
     stack_frame: InterruptStackFrame,
     error_code: PageFaultErrorCode,
 ) {
-    if error_code.contains(PageFaultErrorCode::PROTECTION_VIOLATION) {
-        todo!("program violated page protections e.g. writing to immutable page");
-    }
-
-    if error_code.contains(PageFaultErrorCode::CAUSED_BY_WRITE) {
-        todo!("do we demand page writable pages?");
-    }
-
-    if error_code.contains(PageFaultErrorCode::INSTRUCTION_FETCH) {
-        todo!("could be useful");
-    }
-
-    let ip: u64 = stack_frame.instruction_pointer.as_u64();
     let virtual_address = VirtualAddress::new_canonical(Cr2::read_raw() as usize);
+    log::debug!("{virtual_address:0x?}");
 
-    let mut pages = REQUESTED_PAGES.lock();
-    let bytes = match pages.remove(&virtual_address) {
-        Some(f) => {
-            f()
-        }
-        None => {
-            todo!();
-        }
-    };
+    if let Err(error) = inner_page_fault_handler(virtual_address, error_code) {
+        log::error!("{error}");
+        halt::kill_and_halt(
+            0xe,
+            &stack_frame,
+            Some(::halt::ErrorCode::PageFaultError {
+                accessed_address: virtual_address.value(),
+                pf_error: error_code,
+            }),
+            true,
+        );
+    }
+}
 
-    let slice =
-        unsafe { core::slice::from_raw_parts_mut(virtual_address.value() as *mut u8, 4096) };
-    slice.copy_from_slice(&bytes);
+fn inner_page_fault_handler(
+    virtual_address: VirtualAddress,
+    error_code: PageFaultErrorCode,
+) -> Result<(), &'static str> {
+    // log::error!("VIRTUAL ADDRESS: {virtual_address:0x?}");
+    if error_code.contains(PageFaultErrorCode::PROTECTION_VIOLATION) {
+        return Err("protection violation");
+    }
 
-    // FIXME
-    unsafe { asm!("jmp {}", in(reg) ip) };
+    // TODO: Is this ok?
+    let mut mapper = Mapper::from_current();
+    let entry: &mut _ = mapper
+        .get_entry(Page::containing_address(virtual_address))
+        .ok_or("failed to get page table entry")?;
+
+    let flags = entry.flags();
+    if flags.is_requested() {
+        let frame = frame_allocator::allocate_frames(1).ok_or("failed to allocate frame")?;
+        let new_flags = flags.valid(true).requested(false);
+        entry.set_entry(frame.as_allocated_frame(), new_flags);
+        Ok(())
+    } else {
+        Err("page not requested")
+    }
 }

@@ -39,6 +39,11 @@ pub fn insert_ap_stack(apic_id: u8, stack: Stack) {
     AP_STACKS.lock().insert(apic_id, NoDrop::new(stack));
 }
 
+#[inline(never)]
+fn temp() {
+    static COUNTER: core::sync::atomic::AtomicUsize = core::sync::atomic::AtomicUsize::new(0);
+    COUNTER.fetch_add(1, core::sync::atomic::Ordering::Relaxed);
+}
 
 /// Entry to rust for an AP.
 /// The arguments must match the invocation order in "ap_boot.asm"
@@ -50,6 +55,8 @@ pub fn kstart_ap(
     nmi_lint: u8,
     nmi_flags: u16,
 ) -> ! {
+    // temp();
+    // loop {}
     info!("Booting AP: proc: {}, apic: {}, stack: {:#X} to {:#X}, nmi_lint: {}, nmi_flags: {:#X}",
         processor_id, apic_id, _stack_start, _stack_end, nmi_lint, nmi_flags
     );
@@ -57,23 +64,28 @@ pub fn kstart_ap(
     // set a flag telling the BSP that this AP has entered Rust code
     AP_READY_FLAG.store(true, Ordering::SeqCst);
 
+    log::info!("b");
+
     // get the stack that was allocated for us (this AP) by the BSP.
     let this_ap_stack = AP_STACKS.lock().remove(&apic_id)
         .unwrap_or_else(|| panic!("BUG: kstart_ap(): couldn't get stack created for AP with apic_id: {}", apic_id));
+    log::info!("c");
 
     // initialize interrupts (including TSS/GDT) for this AP
     let kernel_mmi_ref = get_kernel_mmi_ref().expect("kstart_ap(): kernel_mmi ref was None");
     let (double_fault_stack, privilege_stack) = {
         let mut kernel_mmi = kernel_mmi_ref.lock();
         (
-            stack::alloc_stack(KERNEL_STACK_SIZE_IN_PAGES, &mut kernel_mmi.page_table)
+            stack::alloc_stack_eagerly(KERNEL_STACK_SIZE_IN_PAGES, &mut kernel_mmi.page_table)
                 .expect("kstart_ap(): could not allocate double fault stack"),
-            stack::alloc_stack(1, &mut kernel_mmi.page_table)
+            stack::alloc_stack_eagerly(1, &mut kernel_mmi.page_table)
                 .expect("kstart_ap(): could not allocate privilege stack"),
         )
     };
+    log::info!("d");
     let _idt = interrupts::init_ap(apic_id, double_fault_stack.top_unusable(), privilege_stack.top_unusable())
         .expect("kstart_ap(): failed to initialize interrupts!");
+    log::info!("e");
 
     // Initialize this CPU's Local APIC such that we can use everything that depends on APIC IDs.
     // This must be done before initializing task spawning, because that relies on the ability to
@@ -87,16 +99,20 @@ pub fn kstart_ap(
         nmi_flags,
     ).unwrap();
 
+    log::info!("f");
     // Now that the Local APIC has been initialized for this CPU, we can initialize the
     // task management subsystem and create the idle task for this CPU.
     let bootstrap_task = spawn::init(kernel_mmi_ref.clone(), apic_id, this_ap_stack).unwrap();
+    log::info!("g");
     spawn::create_idle_task().unwrap();
+    log::info!("h");
 
     // The PAT must be initialized explicitly on every CPU,
     // but it is not a fatal error if it doesn't exist.
     if page_attribute_table::init().is_err() {
         error!("This CPU does not support the Page Attribute Table");
     }
+    log::info!("i");
 
     info!("Initialization complete on AP core {}. Enabling interrupts...", apic_id);
     // The following final initialization steps are important, and order matters:
@@ -104,8 +120,10 @@ pub fn kstart_ap(
     // (currently nothing else needs to be dropped)
     // 2. "Finish" this bootstrap task, indicating it has exited and no longer needs to run.
     bootstrap_task.finish();
+    log::info!("j");
     // 3. Enable interrupts such that other tasks can be scheduled in.
     enable_interrupts();
+    log::info!("k");
     // ****************************************************
     // NOTE: nothing below here is guaranteed to run again!
     // ****************************************************

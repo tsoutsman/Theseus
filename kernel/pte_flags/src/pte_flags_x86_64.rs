@@ -102,6 +102,8 @@ bitflags! {
         /// Note: Theseus is a single address space system, so this flag makes no difference.
         const _GLOBAL            = 1 <<  8;
 
+        const REQUESTED          = 1 << 9;
+
         // Note: Theseus currently only supports setting PAT bits for P1-level PTEs.
         //
         // /// (For P2- and P3- level (mid-level) page tables ONLY):
@@ -225,6 +227,12 @@ impl PteFlagsX86_64 {
         self
     }
 
+    #[must_use]
+    pub fn requested(mut self, enable: bool) -> Self {
+        self.set(Self::REQUESTED, enable);
+        self
+    }
+
     #[doc(alias("present"))]
     pub const fn is_valid(&self) -> bool {
         self.contains(Self::VALID)
@@ -255,6 +263,10 @@ impl PteFlagsX86_64 {
 
     pub const fn is_exclusive(&self) -> bool {
         self.contains(Self::EXCLUSIVE)
+    }
+
+    pub const fn is_requested(&self) -> bool {
+        self.contains(Self::REQUESTED)
     }
 }
 

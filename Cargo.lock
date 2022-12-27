@@ -381,12 +381,14 @@ dependencies = [
  "no_drop",
  "ota_update_client",
  "page_attribute_table",
+ "runqueue",
  "scheduler",
  "simd_personality",
  "spawn",
  "stack",
  "task",
  "task_fs",
+ "time",
  "tlb_shootdown",
  "tsc",
  "window_manager",
@@ -809,10 +811,9 @@ dependencies = [
 name = "demand_paging"
 version = "0.1.0"
 dependencies = [
- "exceptions_full",
- "hashbrown",
- "irq_safety",
- "lazy_static",
+ "frame_allocator",
+ "halt",
+ "log",
  "memory",
  "x86_64",
 ]
@@ -1037,7 +1038,9 @@ dependencies = [
  "app_io",
  "cpu",
  "debug_info",
+ "demand_paging",
  "fault_log",
+ "halt",
  "locked_idt",
  "log",
  "memory",
@@ -1327,6 +1330,23 @@ checksum = "c65cd533b33e3d04c6e393225fa8919ddfcf5862ca8919c7f9a167c312ef41c2"
 dependencies = [
  "plain",
  "scroll",
+]
+
+[[package]]
+name = "halt"
+version = "0.1.0"
+dependencies = [
+ "app_io",
+ "debug_info",
+ "fault_log",
+ "log",
+ "memory_structs",
+ "signal_handler",
+ "stack_trace",
+ "task",
+ "unwind",
+ "vga_buffer",
+ "x86_64",
 ]
 
 [[package]]

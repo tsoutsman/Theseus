@@ -351,19 +351,23 @@ impl<F, A, R> TaskBuilder<F, A, R>
     /// It does not switch to it immediately; that will happen on the next scheduler invocation.
     #[inline(never)]
     pub fn spawn(self) -> Result<JoinableTaskRef, &'static str> {
+        log::info!("-- 4");
         let mut new_task = Task::new(
             self.stack,
             self.parent.as_ref(),
             task_cleanup_failure::<F, A, R>,
         )?;
+        log::info!("-- 5");
         // If a Task name wasn't provided, then just use the function's name.
         new_task.name = self.name.unwrap_or_else(|| String::from(core::any::type_name::<F>()));
+        log::info!("-- 6");
     
         #[cfg(simd_personality)] {  
             new_task.simd = self.simd;
         }
 
         setup_context_trampoline(&mut new_task, task_wrapper::<F, A, R>)?;
+        log::info!("-- 7");
 
         // We use the bottom of the new task's stack for its entry function and arguments. 
         // This is a bit inefficient; it'd be optimal to put them directly where they need to go
@@ -371,23 +375,28 @@ impl<F, A, R> TaskBuilder<F, A, R>
         // However, it vastly simplifies type safety since we don't need to mess with pointers,
         // and it removes uncertainty associated with assuming different calling conventions.
         let bottom_of_stack: &mut usize = new_task.inner_mut().kstack.as_type_mut(0)?;
+        log::info!("-- 8");
         let box_ptr = Box::into_raw(Box::new(TaskFuncArg::<F, A, R> {
             arg:  self.argument,
             func: self.func,
             _ret: PhantomData,
         }));
+        log::info!("-- 9");
         *bottom_of_stack = box_ptr as usize;
+        log::info!("-- 10");
 
         // The new task is marked as idle
         if self.idle {
             new_task.is_an_idle_task = true;
         }
+        log::info!("-- 11");
 
         // If there is a post-build function, invoke it now
         // before finalizing the task and adding it to runqueues.
         if let Some(pb_func) = self.post_build_function {
             pb_func(&mut new_task)?;
         }
+        log::info!("-- 12");
 
         // Now that it has been fully initialized, mark the task as no longer `Initing`.
         if self.blocked {
@@ -397,14 +406,18 @@ impl<F, A, R> TaskBuilder<F, A, R>
             new_task.make_inited_task_runnable()
                 .map_err(|_| "BUG: newly-spawned task was not in the Initing runstate")?;
         }
+        log::info!("-- 13");
 
         let task_ref = TaskRef::new(new_task);
+        log::info!("-- 14");
         let _existing_task = TASKLIST.lock().insert(task_ref.id, task_ref.clone());
+        log::info!("-- 15");
         // insert should return None, because that means there was no existing task with the same ID 
         if let Some(_existing_task) = _existing_task {
             error!("BUG: TaskBuilder::spawn(): Fatal Error: TASKLIST already contained a task with the new task's ID! {:?}", _existing_task);
             return Err("BUG: TASKLIST a contained a task with the new task's ID");
         }
+        log::info!("-- 16");
         
         if let Some(core) = self.pin_on_core {
             runqueue::add_task_to_specific_runqueue(core, task_ref.clone())?;
@@ -472,10 +485,12 @@ impl<F, A, R> TaskBuilder<F, A, R>
         mut self,
         restart_with_arg: Option<A>
     ) -> Result<JoinableTaskRef, &'static str> {
+        log::info!("-- 1");
         let restart_info = RestartInfo {
             argument: Box::new(restart_with_arg.unwrap_or_else(|| self.argument.clone())),
             func: Box::new(self.func.clone()),
         };
+        log::info!("-- 2");
 
         // Once the new task is created, we set its restart info (func and arg),
         // and tell it to use the restartable version of the final task cleanup function.
@@ -487,6 +502,7 @@ impl<F, A, R> TaskBuilder<F, A, R>
                 Ok(())
             }
         ));
+        log::info!("-- 3");
 
         // Code path is shared between `spawn` and `spawn_restartable` from this point
         self.spawn()
@@ -566,6 +582,7 @@ pub fn setup_context_trampoline(
     new_task: &mut Task,
     entry_point_function: fn() -> !
 ) -> Result<(), &'static str> {
+    log::info!("-- a");
     if new_task.runstate() != RunState::Initing {
         return Err("`setup_context_trampoline()` can only be invoked on `Initing` tasks");
     }
@@ -575,24 +592,32 @@ pub fn setup_context_trampoline(
     /// which is useful for both the simd_personality config and regular/SSE configs.
     macro_rules! set_context {
         ($ContextType:ty) => (
+            log::info!("-- b");
             let new_task_id = new_task.id;
+            log::info!("-- c");
             let new_task_inner = new_task.inner_mut();
             // We write the new Context struct at the "top" (usable top) of the stack,
             // which is at the end of the stack's MappedPages. 
             // We must subtract "size of usize" (8) bytes from the offset to ensure
             // that the new Context struct doesn't spill over past the top of the stack.
+            log::info!("-- d");
             let context_mp_offset = new_task_inner.kstack.size_in_bytes()
                 - mem::size_of::<usize>()
                 - mem::size_of::<$ContextType>();
+            log::info!("-- e");
             let context_dest: &mut $ContextType = new_task_inner.kstack
                 .as_type_mut(context_mp_offset)?;
+            log::info!("-- f");
             let mut new_context =  <$ContextType>::new(entry_point_function as usize);
             // Store the new task's ID in an unused register in the new Context struct. 
+            log::info!("-- g");
             new_context.set_first_register(new_task_id);
+            log::info!("-- h");
             *context_dest = new_context;
             // Save the address of this newly-stored Context struct
             // (which is within the new task's stack) so that it can be used by the
             // context switch routine in the future when this task is first switched to.
+            log::info!("-- i");
             new_task_inner.saved_sp = context_dest as *const _ as usize;
         );
     }

@@ -30,7 +30,7 @@ use spin::Once;
 use kernel_config::memory::{PAGE_SIZE, ENTRIES_PER_PAGE_TABLE};
 use super::tlb_flush_virt_addr;
 use zerocopy::FromBytes;
-use page_table_entry::UnmapResult;
+use page_table_entry::{UnmapResult, PageTableEntry};
 use owned_borrowed_trait::{OwnedOrBorrowed, Owned, Borrowed};
 
 /// This is a private callback used to convert `UnmappedFrames` into `AllocatedFrames`.
@@ -59,7 +59,7 @@ pub struct Mapper {
 }
 
 impl Mapper {
-    pub(crate) fn from_current() -> Mapper {
+    pub fn from_current() -> Mapper {
         Self::with_p4_frame(get_current_p4())
     }
 
@@ -158,6 +158,12 @@ impl Mapper {
             .or_else(huge_page)
     }
 
+    pub fn get_entry(&mut self, page: Page) -> Option<&mut PageTableEntry> {
+        let p3 = self.p4_mut().next_table_mut(page.p4_index());
+        p3.and_then(|p3| p3.next_table_mut(page.p3_index()))
+            .and_then(|p2| p2.next_table_mut(page.p2_index()))
+            .map(|p1| &mut p1[page.p1_index()])
+    }
 
     /// An internal function that performs the actual mapping of a range of allocated `pages`
     /// to a range of allocated `frames`.
@@ -243,6 +249,47 @@ impl Mapper {
     /// 
     /// Consumes the given `AllocatedPages` and returns a `MappedPages` object which contains those `AllocatedPages`.
     pub fn map_allocated_pages<F: Into<PteFlagsArch>>(
+        &mut self,
+        pages: AllocatedPages,
+        flags: F,
+    ) -> Result<MappedPages, &'static str> {
+        let flags = flags.into();
+        let higher_level_flags = flags.adjust_for_higher_level_pte();
+
+        // Only the lowest-level P1 entry can be considered exclusive, and only because
+        // we are mapping it exclusively (to owned `AllocatedFrames`).
+        let actual_flags = flags
+            .valid(false)
+            .exclusive(true)
+            .requested(true);
+
+        for page in pages.deref().clone() {
+            let p3 = self.p4_mut().next_table_create(page.p4_index(), higher_level_flags);
+            let p2 = p3.next_table_create(page.p3_index(), higher_level_flags);
+            let p1 = p2.next_table_create(page.p2_index(), higher_level_flags);
+
+            if !p1[page.p1_index()].is_unused() {
+                error!("map_allocated_pages(): page {:#X} was already in use!",
+                    page.start_address(),
+                );
+                return Err("map_allocated_pages(): page was already in use");
+            } 
+
+            p1[page.p1_index()].set_fake_entry(actual_flags);
+        }
+
+        Ok(MappedPages {
+            page_table_p4: self.target_p4,
+            pages,
+            flags: actual_flags,
+        })
+        // self.map_allocated_pages_eagerly(pages, flags)
+    }
+
+    /// Maps the given `AllocatedPages` to randomly chosen (allocated) physical frames.
+    /// 
+    /// Consumes the given `AllocatedPages` and returns a `MappedPages` object which contains those `AllocatedPages`.
+    pub fn map_allocated_pages_eagerly<F: Into<PteFlagsArch>>(
         &mut self,
         pages: AllocatedPages,
         flags: F,

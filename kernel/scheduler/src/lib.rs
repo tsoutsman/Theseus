@@ -34,8 +34,10 @@ pub fn schedule() -> bool {
     let cpu_id = preemption_guard.cpu_id();
 
     let Some(next_task) = scheduler::select_next_task(cpu_id) else {
+        // log::info!("RESETTING ON: {cpu_id}");
         return false; // keep running the same current task
     };
+    // log::info!("SCHEDULING ON: {cpu_id} {next_task:#?}");
 
     let (did_switch, recovered_preemption_guard) = task::task_switch(
         next_task,
