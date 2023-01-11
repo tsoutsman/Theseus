@@ -103,6 +103,33 @@
 <span id="103">103</span>
 <span id="104">104</span>
 <span id="105">105</span>
+<span id="106">106</span>
+<span id="107">107</span>
+<span id="108">108</span>
+<span id="109">109</span>
+<span id="110">110</span>
+<span id="111">111</span>
+<span id="112">112</span>
+<span id="113">113</span>
+<span id="114">114</span>
+<span id="115">115</span>
+<span id="116">116</span>
+<span id="117">117</span>
+<span id="118">118</span>
+<span id="119">119</span>
+<span id="120">120</span>
+<span id="121">121</span>
+<span id="122">122</span>
+<span id="123">123</span>
+<span id="124">124</span>
+<span id="125">125</span>
+<span id="126">126</span>
+<span id="127">127</span>
+<span id="128">128</span>
+<span id="129">129</span>
+<span id="130">130</span>
+<span id="131">131</span>
+<span id="132">132</span>
 </pre><pre class="rust"><code><span class="doccomment">//! This crate provides an abstraction over multiboot2 and UEFI boot
 //! information.
 //!
@@ -117,7 +144,7 @@
 <span class="attr">#[cfg(feature = <span class="string">&quot;uefi&quot;</span>)]
 </span><span class="kw">pub mod </span>uefi;
 
-<span class="kw">use </span>core::{iter::Iterator, ops::Range};
+<span class="kw">use </span>core::iter::Iterator;
 <span class="kw">use </span>memory_structs::{PhysicalAddress, VirtualAddress};
 
 <span class="kw">pub trait </span>MemoryRegion {
@@ -126,6 +153,11 @@
 
     <span class="doccomment">/// Returns the region&#39;s length.
     </span><span class="kw">fn </span>len(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; usize;
+
+    <span class="doccomment">/// Returns whether the region is empty.
+    </span><span class="kw">fn </span>is_empty(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; bool {
+        <span class="self">self</span>.len() == <span class="number">0
+    </span>}
 
     <span class="doccomment">/// Returns whether the region can be used by the frame allocator.
     </span><span class="kw">fn </span>is_usable(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; bool;
@@ -140,6 +172,11 @@
 
     <span class="doccomment">/// Returns the section&#39;s length.
     </span><span class="kw">fn </span>len(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; usize;
+
+    <span class="doccomment">/// Returns whether the section is empty.
+    </span><span class="kw">fn </span>is_empty(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; bool {
+        <span class="self">self</span>.len() == <span class="number">0
+    </span>}
 
     <span class="doccomment">/// Returns the section&#39;s flags.
     </span><span class="kw">fn </span>flags(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; ElfSectionFlags;
@@ -168,6 +205,17 @@
 
     <span class="doccomment">/// Returns the module&#39;s length.
     </span><span class="kw">fn </span>len(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; usize;
+
+    <span class="doccomment">/// Returns whether the module is empty.
+    </span><span class="kw">fn </span>is_empty(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; bool {
+        <span class="self">self</span>.len() == <span class="number">0
+    </span>}
+}
+
+<span class="attr">#[derive(Debug)]
+</span><span class="kw">pub struct </span>ReservedMemoryRegion {
+    <span class="kw">pub </span>start: PhysicalAddress,
+    <span class="kw">pub </span>len: usize,
 }
 
 <span class="kw">pub trait </span>BootInformation: <span class="lifetime">&#39;static </span>{
@@ -180,20 +228,17 @@
     <span class="kw">type </span>Module&lt;<span class="lifetime">&#39;a</span>&gt;: Module;
     <span class="kw">type </span>Modules&lt;<span class="lifetime">&#39;a</span>&gt;: Iterator&lt;Item = <span class="self">Self</span>::Module&lt;<span class="lifetime">&#39;a</span>&gt;&gt;;
 
+    <span class="kw">type </span>AdditionalReservedMemoryRegions: Iterator&lt;Item = ReservedMemoryRegion&gt;;
+
     <span class="doccomment">/// Returns the boot information&#39;s starting virtual address.
     </span><span class="kw">fn </span>start(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="prelude-ty">Option</span>&lt;VirtualAddress&gt;;
     <span class="doccomment">/// Returns the boot information&#39;s length.
     </span><span class="kw">fn </span>len(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; usize;
 
-    <span class="doccomment">/// Returns the range of physical addresses at which the kernel code is
-    /// located.
-    </span><span class="kw">fn </span>kernel_memory_range(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="prelude-ty">Result</span>&lt;Range&lt;PhysicalAddress&gt;, <span class="kw-2">&amp;</span><span class="lifetime">&#39;static </span>str&gt;;
-    <span class="doccomment">/// Returns the range of physical addresses at which the bootloader
-    /// information is located.
-    </span><span class="kw">fn </span>bootloader_info_memory_range(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="prelude-ty">Result</span>&lt;Range&lt;PhysicalAddress&gt;, <span class="kw-2">&amp;</span><span class="lifetime">&#39;static </span>str&gt;;
-    <span class="doccomment">/// Returns the range of physical addresses at which the modules are
-    /// located.
-    </span><span class="kw">fn </span>modules_memory_range(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="prelude-ty">Result</span>&lt;Range&lt;PhysicalAddress&gt;, <span class="kw-2">&amp;</span><span class="lifetime">&#39;static </span>str&gt;;
+    <span class="doccomment">/// Returns whether the boot information is empty.
+    </span><span class="kw">fn </span>is_empty(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; bool {
+        <span class="self">self</span>.len() == <span class="number">0
+    </span>}
 
     <span class="doccomment">/// Returns memory regions describing the physical memory.
     </span><span class="kw">fn </span>memory_regions(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="prelude-ty">Result</span>&lt;<span class="self">Self</span>::MemoryRegions&lt;<span class="lifetime">&#39;_</span>&gt;, <span class="kw-2">&amp;</span><span class="lifetime">&#39;static </span>str&gt;;
@@ -201,6 +246,15 @@
     </span><span class="kw">fn </span>elf_sections(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="prelude-ty">Result</span>&lt;<span class="self">Self</span>::ElfSections&lt;<span class="lifetime">&#39;_</span>&gt;, <span class="kw-2">&amp;</span><span class="lifetime">&#39;static </span>str&gt;;
     <span class="doccomment">/// Returns the modules found in the kernel image.
     </span><span class="kw">fn </span>modules(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="self">Self</span>::Modules&lt;<span class="lifetime">&#39;_</span>&gt;;
+
+    <span class="doccomment">/// Returns additional reserved memory regions that aren&#39;t included in
+    /// the list of regions returned by [`memory_regions`].
+    </span><span class="kw">fn </span>additional_reserved_memory_regions(
+        <span class="kw-2">&amp;</span><span class="self">self</span>,
+    ) -&gt; <span class="prelude-ty">Result</span>&lt;<span class="self">Self</span>::AdditionalReservedMemoryRegions, <span class="kw-2">&amp;</span><span class="lifetime">&#39;static </span>str&gt;;
+
+    <span class="doccomment">/// Returns the end of the kernel&#39;s image in physical memory.
+    </span><span class="kw">fn </span>kernel_end(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="prelude-ty">Result</span>&lt;PhysicalAddress, <span class="kw-2">&amp;</span><span class="lifetime">&#39;static </span>str&gt;;
 
     <span class="doccomment">/// Returns the RSDP if it was provided by the bootloader.
     </span><span class="kw">fn </span>rsdp(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="prelude-ty">Option</span>&lt;PhysicalAddress&gt;;

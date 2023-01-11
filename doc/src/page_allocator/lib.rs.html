@@ -719,6 +719,9 @@
 <span id="719">719</span>
 <span id="720">720</span>
 <span id="721">721</span>
+<span id="722">722</span>
+<span id="723">723</span>
+<span id="724">724</span>
 </pre><pre class="rust"><code><span class="doccomment">//! Provides an allocator for virtual memory pages.
 //! The minimum unit of allocation is a single page. 
 //! 
@@ -768,10 +771,13 @@
 
 <span class="doccomment">/// Defines the upper part of the address space that&#39;s designated, similar to `DESIGNATED_PAGES_LOW_END`. 
 /// Any virtual addresses **greater than or equal to** this address is considered &quot;designated&quot;.
-/// This higher part of the address range covers from the beginning of the heap area to the end of the address space.
+/// This higher part of the address range covers from:
+/// the beginning of the recursive P4 entry used for modifying upcoming page tables
+/// to the very end of the address space.
 ///
-/// TODO: once the heap is fully dynamic and not dependent on constant addresses, we can move this up to KERNEL_TEXT_START (511th entry of P4).
-</span><span class="kw">static </span>DESIGNATED_PAGES_HIGH_START: Page = Page::containing_address(VirtualAddress::new_canonical(KERNEL_HEAP_START));
+/// TODO: once the heap is fully dynamic and not dependent on static addresses,
+/// we can exclude the heap from the designated region.
+</span><span class="kw">static </span>DESIGNATED_PAGES_HIGH_START: Page = Page::containing_address(VirtualAddress::new_canonical(UPCOMING_PAGE_TABLE_RECURSIVE_MEMORY_START));
 
 <span class="kw">const </span>MIN_PAGE: Page = Page::containing_address(VirtualAddress::zero());
 <span class="kw">const </span>MAX_PAGE: Page = Page::containing_address(VirtualAddress::new_canonical(MAX_VIRTUAL_ADDRESS));
@@ -1004,7 +1010,7 @@
 			pages: <span class="self">self</span>.pages.clone(),
 		});
 		<span class="kw">match </span>res {
-			<span class="prelude-val">Ok</span>(_inserted_free_chunk) =&gt; <span class="kw">return</span>,
+			<span class="prelude-val">Ok</span>(_inserted_free_chunk) =&gt; (),
 			<span class="prelude-val">Err</span>(c) =&gt; <span class="macro">error!</span>(<span class="string">&quot;BUG: couldn&#39;t insert deallocated chunk {:?} into free page list&quot;</span>, c),
 		}
 		
@@ -1149,8 +1155,8 @@
 ///
 /// It first attempts to find a suitable chunk **not** in the designated regions,
 /// and only allocates from the designated regions as a backup option.
-</span><span class="kw">fn </span>find_any_chunk&lt;<span class="lifetime">&#39;list</span>&gt;(
-	list: <span class="kw-2">&amp;</span><span class="lifetime">&#39;list </span><span class="kw-2">mut </span>StaticArrayRBTree&lt;Chunk&gt;,
+</span><span class="kw">fn </span>find_any_chunk(
+	list: <span class="kw-2">&amp;mut </span>StaticArrayRBTree&lt;Chunk&gt;,
 	num_pages: usize
 ) -&gt; <span class="prelude-ty">Result</span>&lt;(AllocatedPages, DeferredAllocAction&lt;<span class="lifetime">&#39;static</span>&gt;), AllocationError&gt; {
 	<span class="kw">let </span>designated_low_end = DESIGNATED_PAGES_LOW_END.get().ok_or(AllocationError::NotInitialized)<span class="question-mark">?</span>;
@@ -1162,7 +1168,7 @@
 				<span class="kw">if let </span><span class="prelude-val">Some</span>(chunk) = elem {
 					<span class="comment">// Skip chunks that are too-small or in the designated regions.
 					</span><span class="kw">if  </span>chunk.size_in_pages() &lt; num_pages || 
-						chunk.start() &lt;= <span class="kw-2">&amp;</span>designated_low_end || 
+						chunk.start() &lt;= designated_low_end || 
 						chunk.end() &gt;= <span class="kw-2">&amp;</span>DESIGNATED_PAGES_HIGH_START
 					{
 						<span class="kw">continue</span>;
@@ -1190,7 +1196,7 @@
 			// This results in an O(1) allocation time in the general case, until all address ranges are already in use.
 			</span><span class="kw">let </span><span class="kw-2">mut </span>cursor = tree.upper_bound_mut(Bound::Excluded(<span class="kw-2">&amp;</span>DESIGNATED_PAGES_HIGH_START));
 			<span class="kw">while let </span><span class="prelude-val">Some</span>(chunk) = cursor.get().map(|w| w.deref()) {
-				<span class="kw">if </span>chunk.start() &lt;= <span class="kw-2">&amp;</span>designated_low_end {
+				<span class="kw">if </span>chunk.start() &lt;= designated_low_end {
 					<span class="kw">break</span>; <span class="comment">// move on to searching through the designated regions
 				</span>}
 				<span class="kw">if </span>num_pages &lt; chunk.size_in_pages() {
