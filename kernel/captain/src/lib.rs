@@ -48,8 +48,8 @@ extern crate tlb_shootdown;
 extern crate multiple_heaps;
 extern crate console;
 #[cfg(simd_personality)] extern crate simd_personality;
-extern crate time;
-extern crate runqueue;
+// extern crate time;
+// extern crate runqueue;
 
 
 use alloc::vec::Vec;
@@ -145,6 +145,11 @@ pub fn init(
     multiple_heaps::switch_to_multiple_heaps()?;
     info!("Initialized per-core heaps");
 
+    #[cfg(feature = "uefi")] {
+        log::error!("uefi boot cannot proceed as it is not fully implemented");
+        loop {}
+    }
+
     // Initialize the window manager, and also the PAT, if available.
     // The PAT supports write-combining caching of graphics video memory for better performance
     // and must be initialized explicitly on every CPU, 
@@ -190,11 +195,11 @@ pub fn init(
     spawn::cleanup_bootstrap_tasks(cpu_count as usize)?;
     // 4. "Finish" this bootstrap task, indicating it has exited and no longer needs to run.
     bootstrap_task.finish();
-    let x = time::now::<time::Monotonic>();
-    while time::now::<time::Monotonic>().duration_since(x) < time::Duration::from_secs(5) {}
-    for i in 0..=3 {
-        log::info!("{:#?}", *runqueue::get_runqueue(i).unwrap().read());
-    }
+    // let x = time::now::<time::Monotonic>();
+    // while time::now::<time::Monotonic>().duration_since(x) < time::Duration::from_secs(5) {}
+    // for i in 0..=3 {
+    //     log::info!("{:#?}", *runqueue::get_runqueue(i).unwrap().read());
+    // }
     // 5. Enable interrupts such that other tasks can be scheduled in.
     enable_interrupts();
     // ****************************************************

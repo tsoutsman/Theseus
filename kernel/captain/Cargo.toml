@@ -103,11 +103,9 @@ path = "../task_fs"
 [dependencies.multiple_heaps]
 path = "../multiple_heaps"
 
-[dependencies.time]
-path = "../time"
-
-[dependencies.runqueue]
-path = "../runqueue"
+[features]
+# TODO: Remove when UEFI is fully implemented
+uefi = []
 
 [lib]
 crate-type = ["rlib"]
