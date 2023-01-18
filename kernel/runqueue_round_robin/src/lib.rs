@@ -10,6 +10,7 @@ extern crate alloc;
 extern crate mutex_preemption;
 extern crate atomic_linked_list;
 extern crate task;
+extern crate apic;
 
 #[cfg(single_simd_task_optimization)]
 extern crate single_simd_task_optimization;
@@ -214,6 +215,14 @@ impl RunQueue {
                 single_simd_task_optimization::simd_tasks_added_to_core(self.iter(), self.core);
             }
         }
+
+        // Idle task
+        // if self.len() == 1 {
+            log::info!("sending ipi to {}", self.core);
+            if let Some (apic) = apic::get_my_apic() {
+                apic.write().send_ipi(0xfd, apic::LapicIpiDestination::One(self.core));
+            }
+        // }
 
         Ok(())
     }

@@ -133,6 +133,7 @@ pub fn init(
             .set_handler_fn(pic_spurious_interrupt_handler);
         new_idt[apic::LOCAL_APIC_LVT_IRQ as usize]
             .set_handler_fn(lapic_timer_handler);
+        new_idt[0xfd].set_handler_fn(dummy);
         new_idt[apic::APIC_SPURIOUS_INTERRUPT_IRQ as usize]
             .set_handler_fn(apic_spurious_interrupt_handler); 
     }
@@ -148,6 +149,9 @@ pub fn init(
     Ok(&IDT)
 }
 
+extern "x86-interrupt" fn dummy(_: InterruptStackFrame) {
+    log::info!("received ipi");
+}
 
 /// Similar to `init()`, but for APs to call after the BSP has already invoked `init()`.
 pub fn init_ap(

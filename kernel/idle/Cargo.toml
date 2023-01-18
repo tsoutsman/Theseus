@@ -1,0 +1,12 @@
+[package]
+name = "idle"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+apic = { path = "../apic" }
+cpu = { path = "../cpu" }
+log = "0.4"
+preemption = { path = "../preemption" }
+runqueue = { path = "../runqueue" }
+scheduler = { path = "../scheduler" }

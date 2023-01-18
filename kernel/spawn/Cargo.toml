@@ -71,5 +71,8 @@ path = "../preemption"
 [dependencies.no_drop]
 path = "../no_drop"
 
+[dependencies.idle]
+path = "../idle"
+
 [lib]
 crate-type = ["rlib"]

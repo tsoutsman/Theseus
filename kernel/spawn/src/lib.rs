@@ -1004,22 +1004,8 @@ pub fn create_idle_task() -> Result<JoinableTaskRef, &'static str> {
     let apic_id = cpu::current_cpu();
     debug!("Spawning a new idle task on core {}", apic_id);
 
-    new_task_builder(idle_task_entry, apic_id)
+    new_task_builder(idle::entry, ())
         .name(format!("idle_task_core_{}", apic_id))
         .idle(apic_id)
         .spawn_restartable(None)
 }
-
-/// A basic idle task that does nothing but loop endlessly.
-/// 
-/// Note: the current spawn API does not support spawning a task with the return type `!`,
-/// so we use `()` here instead. 
-#[inline(never)]
-fn idle_task_entry(_apic_id: u8) {
-    info!("Entered idle task loop on core {}: {:?}", cpu::current_cpu(), task::get_my_current_task());
-    loop {
-        // TODO: put this core into a low-power state
-        pause::spin_loop_hint();
-    }
-}
-

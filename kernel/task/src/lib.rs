@@ -370,6 +370,7 @@ pub struct Task {
     /// Whether this Task is an idle task, the task that runs by default when no other task is running.
     /// There exists one idle task per core, so this is `false` for most tasks.
     pub is_an_idle_task: bool,
+    pub run_queue: u8,
     /// For application `Task`s, this is effectively a reference to the [`mod_mgmt::LoadedCrate`]
     /// that contains the entry function for this `Task`.
     pub app_crate: Option<Arc<AppCrateRef>>,
@@ -728,11 +729,17 @@ impl Task {
         use RunState::{Blocked, Runnable};
 
         if self.runstate.compare_exchange(Blocked, Runnable).is_ok() {
+            if let Some (apic) = apic::get_my_apic() {
+                apic.write().send_ipi(0xfd, apic::LapicIpiDestination::One(self.core));
+            }
             Ok(Blocked)
         } else if self.runstate.compare_exchange(Runnable, Runnable).is_ok() {
             warn!("Unblocked an already runnable task: {:?}\n\t --> Current {:?}",
                 self, get_my_current_task()
             );
+            if let Some (apic) = apic::get_my_apic() {
+                apic.write().send_ipi(0xfd, apic::LapicIpiDestination::One(self.core));
+            }
             Ok(Runnable)
         } else {
             Err(self.runstate.load())

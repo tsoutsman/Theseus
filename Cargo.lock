@@ -1449,6 +1449,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "idle"
+version = "0.1.0"
+dependencies = [
+ "cpu",
+ "log",
+ "preemption",
+ "runqueue",
+ "scheduler",
+]
+
+[[package]]
 name = "indexmap"
 version = "1.7.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3006,6 +3017,7 @@ dependencies = [
 name = "runqueue_round_robin"
 version = "0.1.0"
 dependencies = [
+ "apic",
  "atomic_linked_list",
  "log",
  "mutex_preemption",
@@ -3370,6 +3382,7 @@ dependencies = [
  "fault_crate_swap",
  "fault_log",
  "fs_node",
+ "idle",
  "irq_safety",
  "lazy_static",
  "log",

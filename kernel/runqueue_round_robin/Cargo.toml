@@ -7,6 +7,9 @@ version = "0.1.0"
 [dependencies]
 log = "0.4.8"
 
+[dependencies.apic]
+path = "../apic"
+
 [dependencies.mutex_preemption]
 path = "../mutex_preemption"
 
