@@ -1018,13 +1018,6 @@
 <a href="#1018" id="1018">1018</a>
 <a href="#1019" id="1019">1019</a>
 <a href="#1020" id="1020">1020</a>
-<a href="#1021" id="1021">1021</a>
-<a href="#1022" id="1022">1022</a>
-<a href="#1023" id="1023">1023</a>
-<a href="#1024" id="1024">1024</a>
-<a href="#1025" id="1025">1025</a>
-<a href="#1026" id="1026">1026</a>
-<a href="#1027" id="1027">1027</a>
 </pre><pre class="rust"><code><span class="doccomment">//! This crate offers routines for spawning new tasks
 //! and convenient builder patterns for customizing new tasks. 
 //! 
@@ -1249,7 +1242,7 @@
         <span class="kw">let </span>app_crate = app_crate_ref.lock_as_ref();
         <span class="kw">let </span>expected_main_section_name = <span class="macro">format!</span>(<span class="string">&quot;{}{}{}&quot;</span>, app_crate.crate_name_as_prefix(), ENTRY_POINT_SECTION_NAME, SECTION_HASH_DELIMITER);
         app_crate.find_section(|sec| 
-            sec.typ == SectionType::Text &amp;&amp; sec.name_without_hash() == <span class="kw-2">&amp;</span>expected_main_section_name
+            sec.typ == SectionType::Text &amp;&amp; sec.name_without_hash() == expected_main_section_name
         ).cloned()
     };
     <span class="kw">let </span>main_func_sec = main_func_sec_opt.ok_or(<span class="string">&quot;spawn::new_application_task_builder(): couldn&#39;t find \&quot;main\&quot; function, expected function name like \&quot;&lt;crate_name&gt;::main::&lt;hash&gt;\&quot;\
@@ -1433,7 +1426,7 @@
                 .map_err(|<span class="kw">_</span>| <span class="string">&quot;BUG: newly-spawned task was not in the Initing runstate&quot;</span>)<span class="question-mark">?</span>;
         }
 
-        <span class="kw">let </span>task_ref = TaskRef::new(new_task);
+        <span class="kw">let </span>task_ref = TaskRef::create(new_task);
         <span class="kw">let </span>_existing_task = TASKLIST.lock().insert(task_ref.id, task_ref.clone());
         <span class="comment">// insert should return None, because that means there was no existing task with the same ID 
         </span><span class="kw">if let </span><span class="prelude-val">Some</span>(_existing_task) = _existing_task {
@@ -1954,8 +1947,8 @@
         </span><span class="kw">let </span>restartable_info = current_task.with_restart_info(|restart_info_opt| {
             restart_info_opt.map(|restart_info| {
                 <span class="attr">#[cfg(use_crate_replacement)] </span>{
-                    <span class="kw">let </span>func_ptr = <span class="kw-2">&amp;</span>(restart_info.func) <span class="kw">as </span><span class="kw-2">*const </span><span class="kw">_ as </span>usize;
-                    <span class="kw">let </span>arg_ptr = <span class="kw-2">&amp;</span>(restart_info.argument) <span class="kw">as </span><span class="kw-2">*const </span><span class="kw">_ as </span>usize;
+                    <span class="kw">let </span>func_ptr = <span class="kw-2">&amp;</span>restart_info.func <span class="kw">as </span><span class="kw-2">*const </span><span class="kw">_ as </span>usize;
+                    <span class="kw">let </span>arg_ptr = <span class="kw-2">&amp;</span>restart_info.argument <span class="kw">as </span><span class="kw-2">*const </span><span class="kw">_ as </span>usize;
 
                     <span class="attr">#[cfg(not(downtime_eval))] </span>{
                         <span class="macro">debug!</span>(<span class="string">&quot;func_ptr {:#X}&quot;</span>, func_ptr);
@@ -2006,14 +1999,7 @@
 </span><span class="kw">fn </span>remove_current_task_from_runqueue(current_task: <span class="kw-2">&amp;</span>ExitableTaskRef) {
     <span class="comment">// Special behavior when evaluating runqueues
     </span><span class="attr">#[cfg(rq_eval)] </span>{
-        <span class="comment">// The special spillful version does nothing here, since it was already done in `internal_exit()`
-        </span><span class="attr">#[cfg(runqueue_spillful)] </span>{
-            <span class="comment">// do nothing
-        </span>}
-        <span class="comment">// The regular spill-free version does brute-force removal of the task from ALL runqueues.
-        </span><span class="attr">#[cfg(not(runqueue_spillful))] </span>{
-            runqueue::remove_task_from_all(current_task).unwrap();
-        }
+        runqueue::remove_task_from_all(current_task).unwrap();
     }
 
     <span class="comment">// In the regular case, we do not perform task migration between cores,
