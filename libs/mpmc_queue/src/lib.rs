@@ -13,11 +13,14 @@ use core::{
     ptr::NonNull,
     sync::atomic::{AtomicUsize, Ordering},
 };
-use spin::Mutex;
+use sync::{Flavour, Mutex, MutexGuard};
 
 /// A growable, first-in first-out, multi-producer, multi-consumer, queue.
-pub struct Queue<T> {
-    pointers: Mutex<Pointers<T>>,
+pub struct Queue<F, T>
+where
+    F: Flavour,
+{
+    pointers: Mutex<F, Pointers<T>>,
     /// Prevents unnecessary locking in the fast path.
     len: AtomicUsize,
 }
@@ -40,7 +43,10 @@ impl<T> Node<T> {
     }
 }
 
-impl<T> Queue<T> {
+impl<F, T> Queue<F, T>
+where
+    F: Flavour,
+{
     pub const fn new() -> Self {
         Self {
             pointers: Mutex::new(Pointers {
@@ -64,7 +70,22 @@ impl<T> Queue<T> {
     /// Appends an item to the queue.
     pub fn push(&self, item: T) {
         let node = box_pointer(Node::new(item));
-        unsafe { self.push_inner(node, node, 1) };
+        let pointers = self.pointers.lock();
+        unsafe { self.push_inner(pointers, node, node, 1) };
+    }
+
+    pub fn push_if_fail<A, B>(&self, item: T, condition: A) -> Option<B>
+    where
+        A: FnOnce() -> Option<B>,
+    {
+        let node = box_pointer(Node::new(item));
+        let pointers = self.pointers.lock();
+        if let Some(value) = condition() {
+            Some(value)
+        } else {
+            unsafe { self.push_inner(pointers, node, node, 1) };
+            None
+        }
     }
 
     /// Appends several items to the queue.
@@ -90,7 +111,8 @@ impl<T> Queue<T> {
             len += 1;
         }
 
-        unsafe { self.push_inner(first, tail, len) };
+        let pointers = self.pointers.lock();
+        unsafe { self.push_inner(pointers, first, tail, len) };
     }
 
     /// Appends a batch of nodes to the queue.
@@ -99,9 +121,13 @@ impl<T> Queue<T> {
     ///
     /// `head` must be the start of the batch, and `tail` must point to the end
     /// of the batch. The batch must be `len` nodes long.
-    unsafe fn push_inner(&self, head: NonNull<Node<T>>, tail: NonNull<Node<T>>, len: usize) {
-        let mut pointers = self.pointers.lock();
-
+    unsafe fn push_inner(
+        &self,
+        mut pointers: MutexGuard<'_, F, Pointers<T>>,
+        head: NonNull<Node<T>>,
+        tail: NonNull<Node<T>>,
+        len: usize,
+    ) {
         if let Some(mut tail_pointer) = pointers.tail {
             // SAFETY: The only other pointer to the tail is stored in the second-to-last
             // node. We hold the lock to pointers, hence we own all the nodes, hence that

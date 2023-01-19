@@ -156,6 +156,8 @@ dependencies = [
  "mpmc",
  "spin 0.9.4",
  "static_assertions",
+ "sync",
+ "sync_spin",
  "wait_queue",
 ]
 
@@ -189,9 +191,9 @@ version = "0.1.0"
 
 [[package]]
 name = "autocfg"
-version = "1.0.0"
+version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f8aac770f1885fd7e387acedd76065302551364496e46b3dd00860b2f8359b9d"
+checksum = "d468802bab17cbc0cc575e9b053f41e72aa36bfa6b7f55e3529ffa43161b97fa"
 
 [[package]]
 name = "backtrace"
@@ -1724,10 +1726,11 @@ dependencies = [
 
 [[package]]
 name = "lock_api"
-version = "0.4.2"
+version = "0.4.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "dd96ffd135b2fd7b973ac026d28085defbe8983df057ced3eb4f2130b0831312"
+checksum = "435011366fe56583b16cf956f9df0095b405b82d76425bc8981c0e22e60ec4df"
 dependencies = [
+ "autocfg",
  "scopeguard",
 ]
 
@@ -2072,6 +2075,13 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "bf78b1242a953be96e01b5f8ed8ffdfc8055c0a2b779899b3835e5d27a69dced"
 
 [[package]]
+name = "mpmc_queue"
+version = "0.1.0"
+dependencies = [
+ "sync",
+]
+
+[[package]]
 name = "msr"
 version = "0.1.0"
 
@@ -2141,6 +2151,7 @@ dependencies = [
  "lockable",
  "log",
  "spin 0.9.4",
+ "sync_spin",
  "wait_queue",
 ]
 
@@ -2845,6 +2856,9 @@ dependencies = [
  "log",
  "scheduler",
  "spin 0.9.4",
+ "sync",
+ "sync_spin",
+ "wait_guard",
  "wait_queue",
 ]
 
@@ -3441,6 +3455,37 @@ dependencies = [
  "proc-macro2",
  "quote",
  "unicode-ident",
+]
+
+[[package]]
+name = "sync"
+version = "0.1.0"
+dependencies = [
+ "lock_api",
+]
+
+[[package]]
+name = "sync_block"
+version = "0.1.0"
+dependencies = [
+ "sync",
+ "sync_spin",
+ "wait_queue",
+]
+
+[[package]]
+name = "sync_preemption"
+version = "0.1.0"
+dependencies = [
+ "preemption",
+ "sync",
+]
+
+[[package]]
+name = "sync_spin"
+version = "0.1.0"
+dependencies = [
+ "sync",
 ]
 
 [[package]]
@@ -4104,12 +4149,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "wait_guard"
+version = "0.1.0"
+dependencies = [
+ "scheduler",
+]
+
+[[package]]
 name = "wait_queue"
 version = "0.1.0"
 dependencies = [
- "irq_safety",
- "log",
+ "mpmc_queue",
  "scheduler",
+ "sync",
+ "sync_spin",
 ]
 
 [[package]]
