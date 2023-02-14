@@ -20,7 +20,7 @@ var sourcesIndex = JSON.parse('{\
 "console":["",[],["lib.rs"]],\
 "context_switch":["",[],["lib.rs"]],\
 "context_switch_avx":["",[],["lib.rs"]],\
-"context_switch_regular":["",[],["lib.rs"]],\
+"context_switch_regular":["",[],["lib.rs","x86_64.rs"]],\
 "context_switch_sse":["",[],["lib.rs"]],\
 "cow_arc":["",[],["lib.rs"]],\
 "cpu":["",[],["lib.rs"]],\
@@ -72,10 +72,12 @@ var sourcesIndex = JSON.parse('{\
 "libterm":["",[],["cursor.rs","lib.rs"]],\
 "lockable":["",[],["lib.rs"]],\
 "locked_idt":["",[],["lib.rs"]],\
-"logger":["",[],["lib.rs"]],\
+"logger_aarch64":["",[],["lib.rs"]],\
+"logger_x86_64":["",[],["lib.rs"]],\
 "madt":["",[],["lib.rs"]],\
 "memfs":["",[],["lib.rs"]],\
 "memory":["",[["paging",[],["mapper.rs","mod.rs","table.rs","temporary_page.rs"]]],["lib.rs"]],\
+"memory_aarch64":["",[],["lib.rs"]],\
 "memory_initialization":["",[],["lib.rs"]],\
 "memory_structs":["",[],["lib.rs"]],\
 "memory_x86_64":["",[],["lib.rs"]],\
@@ -166,7 +168,6 @@ var sourcesIndex = JSON.parse('{\
 "tss":["",[],["lib.rs"]],\
 "tty":["",[],["channel.rs","discipline.rs","lib.rs"]],\
 "unwind":["",[],["lib.rs","lsda.rs","registers.rs"]],\
-"util":["",[],["lib.rs"]],\
 "vfs_node":["",[],["lib.rs"]],\
 "vga_buffer":["",[],["lib.rs"]],\
 "virtual_nic":["",[],["lib.rs"]],\

@@ -223,6 +223,7 @@
 <a href="#223" id="223">223</a>
 <a href="#224" id="224">224</a>
 <a href="#225" id="225">225</a>
+<a href="#226" id="226">226</a>
 </pre><pre class="rust"><code><span class="doccomment">//! A simple library that handles stdio queues for applications invoked by a
 //! shell.
 //!
@@ -237,6 +238,7 @@
 </span><span class="attr">#![no_std]
 
 </span><span class="kw">extern crate </span>alloc;
+<span class="kw">extern crate </span>logger_x86_64 <span class="kw">as </span>logger;
 
 <span class="kw">use </span>alloc::{format, sync::Arc};
 <span class="kw">use </span>core2::io::{<span class="self">self</span>, Error, ErrorKind, Read, Write};
@@ -437,15 +439,15 @@
         <span class="prelude-val">Some</span>(queues) =&gt; {
             <span class="kw">if </span>queues
                 .stdout
-                .write_all(<span class="macro">format!</span>(<span class="string">&quot;{}&quot;</span>, fmt_args).as_bytes())
+                .write_all(<span class="macro">format!</span>(<span class="string">&quot;{fmt_args}&quot;</span>).as_bytes())
                 .is_err()
             {
                 <span class="kw">let _ </span>= logger::write_str(<span class="string">&quot;\x1b[31m [E] failed to write to stdout \x1b[0m\n&quot;</span>);
             }
         }
         <span class="prelude-val">None </span>=&gt; {
-            <span class="kw">let _ </span>= logger::write_str(<span class="string">&quot;\x1b[31m [E] error in print!/println! macro: no stdout queue for current task \x1b[0m\n&quot;</span>);
-        }
+            <span class="comment">// let _ = logger::write_str(&quot;\x1b[31m [E] error in print!/println! macro: no stdout queue for current task \x1b[0m\n&quot;);
+        </span>}
     };
 }
 </code></pre></div>
