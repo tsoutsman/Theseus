@@ -30,6 +30,14 @@ impl RunQueue {
     pub fn add(&mut self, task: TaskRef) {
         task.is_on_run_queue.store(true, Ordering::Release);
         self.queue.add(task);
+        if crate::idle::is_idle(self.core) {
+            if let Some(apic) = apic::get_my_apic() {
+            log::info!("writing ipi to {}", self.core);
+                apic.write().send_ipi(0xfd, apic::LapicIpiDestination::One(self.core));
+            } else {
+            panic!("WTF");
+        }
+        }
         #[cfg(single_simd_task_optimization)]
         if task.simd {
             single_simd_task_optimization::simd_tasks_added_to_core(self.iter(), self.core);

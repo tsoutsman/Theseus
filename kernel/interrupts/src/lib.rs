@@ -133,6 +133,7 @@ pub fn init(
             .set_handler_fn(pic_spurious_interrupt_handler);
         new_idt[apic::LOCAL_APIC_LVT_IRQ as usize]
             .set_handler_fn(lapic_timer_handler);
+        new_idt[0xfd].set_handler_fn(scheduler::idle::scheduler_ipi_handler);
         new_idt[apic::APIC_SPURIOUS_INTERRUPT_IRQ as usize]
             .set_handler_fn(apic_spurious_interrupt_handler); 
     }

@@ -183,6 +183,10 @@ pub fn init(
     first_application::start()?;
 
     info!("captain::init(): initialization done! Spawning an idle task on BSP core {} and enabling interrupts...", bsp_apic_id);
+
+    for i in 0..4 {
+        warn!("runqueue {i}: {:#?}", scheduler::get_run_queue(i).unwrap());
+    }
     // The following final initialization steps are important, and order matters:
     // 1. Drop any other local stack variables that still exist.
     drop(kernel_mmi_ref);

@@ -1,4 +1,10 @@
-#![feature(core_intrinsics, thread_local, negative_impls, panic_info_message)]
+#![feature(
+    abi_x86_interrupt,
+    core_intrinsics,
+    negative_impls,
+    panic_info_message,
+    thread_local
+)]
 #![no_std]
 
 extern crate alloc;
@@ -11,6 +17,8 @@ use crate::queue::RunQueue;
 use atomic_linked_list::atomic_map::AtomicMap;
 use log::error;
 use mutex_preemption::RwLockPreempt;
+
+pub mod idle;
 
 pub use task::{
     bootstrap_task, get_my_current_task, get_my_current_task_id, get_task, init_current_task,

@@ -368,7 +368,7 @@ impl<F, A, R> TaskBuilder<F, A, R>
             task_cleanup_failure::<F, A, R>,
         )?;
         // If a Task name wasn't provided, then just use the function's name.
-        new_task.name = self.name.unwrap_or_else(|| String::from(core::any::type_name::<F>()));
+        new_task.name = self.name.clone().unwrap_or_else(|| String::from(core::any::type_name::<F>()));
     
         #[cfg(simd_personality)] {  
             new_task.simd = self.simd;
@@ -425,6 +425,7 @@ impl<F, A, R> TaskBuilder<F, A, R>
             if let Some(core) = self.pin_on_core {
                 scheduler::add_task_to_specific_run_queue(core, task_ref.clone())?;
             } else {
+                log::info!("adding {:?} to any run queue", self.name);
                 scheduler::add_task_to_any_run_queue(task_ref.clone())?;
             }
         }
@@ -1001,23 +1002,9 @@ fn remove_current_task_from_runqueue(current_task: &ExitableTaskRef) {
 pub fn create_idle_task(apic_id: u8) -> Result<TaskRef, &'static str> {
     debug!("Spawning a new idle task on core {}", apic_id);
 
-    new_task_builder(idle_task_entry, apic_id)
+    new_task_builder(scheduler::idle::entry, ())
         .name(format!("idle_task_core_{}", apic_id))
         .idle(apic_id)
         .spawn_restartable(None)
         .map(|task| task.orphan())
 }
-
-/// A basic idle task that does nothing but loop endlessly.
-/// 
-/// Note: the current spawn API does not support spawning a task with the return type `!`,
-/// so we use `()` here instead. 
-#[inline(never)]
-fn idle_task_entry(_apic_id: u8) {
-    info!("Entered idle task loop on core {}: {:?}", cpu::current_cpu(), scheduler::get_my_current_task());
-    loop {
-        // TODO: put this core into a low-power state
-        pause::spin_loop_hint();
-    }
-}
-

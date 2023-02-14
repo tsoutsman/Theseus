@@ -3008,6 +3008,7 @@ checksum = "f2cc38e8fa666e2de3c4aba7edeb5ffc5246c1c2ed0e3d17e560aeeba736b23f"
 name = "scheduler"
 version = "0.1.0"
 dependencies = [
+ "apic",
  "atomic_linked_list",
  "cfg-if 1.0.0",
  "context_switch",
