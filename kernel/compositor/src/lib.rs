@@ -1,6 +1,7 @@
 //! This crate defines a trait of `Compositor`  .
 //! A compositor composites a list of sources buffers to a single destination buffer.
 
+#![allow(clippy::range_plus_one)]
 #![no_std]
 
 extern crate framebuffer;
@@ -190,7 +191,7 @@ impl CompositableRegion for Rectangle {
                 Some(index) => index,
                 None => {continue;}
             };
-            dest_fb.composite_buffer(&(src_buffer[src_start_index..src_end_index]), dest_start_index as usize);
+            dest_fb.composite_buffer(&src_buffer[src_start_index..src_end_index], dest_start_index);
         }
 
         Ok(())

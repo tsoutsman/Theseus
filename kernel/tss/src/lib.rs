@@ -17,7 +17,7 @@ use memory::VirtualAddress;
 pub const DOUBLE_FAULT_IST_INDEX: usize = 0;
 
 /// The TSS list, one per core, indexed by a key of apic_id.
-static TSS: AtomicMap<u8, Mutex<TaskStateSegment>> = AtomicMap::new();
+pub static TSS: AtomicMap<u8, Mutex<TaskStateSegment>> = AtomicMap::new();
 
 
 /// Sets the current core's TSS privilege stack 0 (RSP0) entry, which points to the stack that 

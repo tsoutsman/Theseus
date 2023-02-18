@@ -83,7 +83,7 @@ pub fn kstart_ap(
         )
     };
     log::info!("d");
-    let _idt = interrupts::init_ap(apic_id, double_fault_stack.top_unusable(), privilege_stack.top_unusable())
+    let idt = interrupts::init_ap(apic_id, double_fault_stack.top_unusable(), privilege_stack.top_unusable())
         .expect("kstart_ap(): failed to initialize interrupts!");
     log::info!("e");
 
@@ -98,6 +98,7 @@ pub fn kstart_ap(
         nmi_lint,
         nmi_flags,
     ).unwrap();
+    demand_paging::init(idt, &mut *kernel_mmi_ref.lock().page_table).unwrap();
 
     log::info!("f");
     // Now that the Local APIC has been initialized for this CPU, we can initialize the

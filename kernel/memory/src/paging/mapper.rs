@@ -26,11 +26,14 @@ use crate::paging::{
 };
 use pte_flags::PteFlagsArch;
 use spin::Once;
-use kernel_config::memory::{PAGE_SIZE, ENTRIES_PER_PAGE_TABLE};
+use kernel_config::memory::PAGE_SIZE;
 use super::tlb_flush_virt_addr;
 use zerocopy::FromBytes;
 use page_table_entry::{UnmapResult, PageTableEntry};
 use owned_borrowed_trait::{OwnedOrBorrowed, Owned, Borrowed};
+
+#[cfg(target_arch = "x86_64")]
+use kernel_config::memory::ENTRIES_PER_PAGE_TABLE;
 
 /// This is a private callback used to convert `UnmappedFrames` into `AllocatedFrames`.
 /// 
@@ -50,6 +53,11 @@ use owned_borrowed_trait::{OwnedOrBorrowed, Owned, Borrowed};
 /// that it is only invoked for `UnmappedFrames`.
 pub(super) static INTO_ALLOCATED_FRAMES_FUNC: Once<fn(FrameRange) -> AllocatedFrames> = Once::new();
 
+/// A convenience function to translate the given virtual address into a
+/// physical address using the currently-active page table.
+pub fn translate(virtual_address: VirtualAddress) -> Option<PhysicalAddress> {
+    Mapper::from_current().translate(virtual_address)
+}
 
 pub struct Mapper {
     p4: Unique<Table<Level4>>,

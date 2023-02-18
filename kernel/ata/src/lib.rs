@@ -13,7 +13,12 @@ extern crate alloc;
 use core::fmt;
 use bitflags::bitflags;
 use spin::Mutex;
-use alloc::{boxed::Box, format, string::String, sync::Arc};
+use alloc::{
+	boxed::Box, 
+	format, 
+	string::{String, ToString}, 
+	sync::Arc
+};
 use port_io::{Port, PortReadOnly, PortWriteOnly};
 use pci::PciDevice;
 use storage_device::{StorageDevice, StorageDeviceRef, StorageController};
@@ -775,7 +780,7 @@ impl IdeController {
 		let drive_fmt = |drive: &Result<AtaDrive, &str>| -> String {
 			match drive {
 				Ok(d)  => format!("drive initialized, size: {} sectors", d.size_in_blocks()),
-				Err(e) => format!("{}", e),
+				Err(e) => e.to_string(),
 			}
 		};
 
@@ -1062,12 +1067,12 @@ impl fmt::Display for AtaSerialNumber {
 	fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
 		core::str::from_utf8(&self.0)
 			.map_err(|_| fmt::Error)
-			.and_then(|s| write!(f, "{}", s))
+			.and_then(|s| write!(f, "{s}"))
 	}
 }
 impl fmt::Debug for AtaSerialNumber {
 	fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-		write!(f, "\"{}\"", self)
+		write!(f, "\"{self}\"")
 	}
 }
 
@@ -1088,12 +1093,12 @@ impl fmt::Display for AtaModelNumber {
 	fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
 		core::str::from_utf8(&self.0)
 			.map_err(|_| fmt::Error)
-			.and_then(|s| write!(f, "{}", s))
+			.and_then(|s| write!(f, "{s}"))
 	}
 }
 impl fmt::Debug for AtaModelNumber {
 	fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-		write!(f, "\"{}\"", self)
+		write!(f, "\"{self}\"")
 	}
 }
 
@@ -1109,11 +1114,11 @@ impl fmt::Display for AtaFirmwareVersion {
 	fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
 		core::str::from_utf8(&self.0)
 			.map_err(|_| fmt::Error)
-			.and_then(|s| write!(f, "{}", s))
+			.and_then(|s| write!(f, "{s}"))
 	}
 }
 impl fmt::Debug for AtaFirmwareVersion {
 	fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-		write!(f, "\"{}\"", self)
+		write!(f, "\"{self}\"")
 	}
 }

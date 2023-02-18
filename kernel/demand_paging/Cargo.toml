@@ -4,8 +4,12 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+cpu = { path = "../cpu" }
 frame_allocator = { path = "../frame_allocator" }
 halt = { path = "../halt" }
+locked_idt = { path = "../../libs/locked_idt" }
 log = "0.4"
 memory = { path = "../memory" }
+stack = { path = "../stack" }
+tss = { path = "../tss" }
 x86_64 = "0.14"

@@ -9,6 +9,9 @@
 //! [tb]:  fn.new_task_builder.html
 //! [atb]: fn.new_application_task_builder.html
 
+// TODO: Add direct explanation to why this empty loop is necessary and criteria for replacing it with something else
+#![allow(clippy::empty_loop)]
+#![allow(clippy::type_complexity)]
 #![no_std]
 #![feature(stmt_expr_attributes)]
 #![feature(naked_functions)]
@@ -167,7 +170,7 @@ pub fn new_task_builder<F, A, R>(
 
 
 /// Every executable application must have an entry function named "main".
-const ENTRY_POINT_SECTION_NAME: &'static str = "main";
+const ENTRY_POINT_SECTION_NAME: &str = "main";
 
 /// The argument type accepted by the `main` function entry point into each application.
 type MainFuncArg = Vec<String>;
@@ -219,7 +222,7 @@ pub fn new_application_task_builder(
         let app_crate = app_crate_ref.lock_as_ref();
         let expected_main_section_name = format!("{}{}{}", app_crate.crate_name_as_prefix(), ENTRY_POINT_SECTION_NAME, SECTION_HASH_DELIMITER);
         app_crate.find_section(|sec| 
-            sec.typ == SectionType::Text && sec.name_without_hash() == &expected_main_section_name
+            sec.typ == SectionType::Text && sec.name_without_hash() == expected_main_section_name
         ).cloned()
     };
     let main_func_sec = main_func_sec_opt.ok_or("spawn::new_application_task_builder(): couldn't find \"main\" function, expected function name like \"<crate_name>::main::<hash>\"\
@@ -413,7 +416,7 @@ impl<F, A, R> TaskBuilder<F, A, R>
         }
         log::info!("-- 13");
 
-        let task_ref = TaskRef::new(new_task);
+        let task_ref = TaskRef::create(new_task);
         log::info!("-- 14");
         let _existing_task = TASKLIST.lock().insert(task_ref.id, task_ref.clone());
         log::info!("-- 15");
@@ -949,8 +952,8 @@ where
         let restartable_info = current_task.with_restart_info(|restart_info_opt| {
             restart_info_opt.map(|restart_info| {
                 #[cfg(use_crate_replacement)] {
-                    let func_ptr = &(restart_info.func) as *const _ as usize;
-                    let arg_ptr = &(restart_info.argument) as *const _ as usize;
+                    let func_ptr = &restart_info.func as *const _ as usize;
+                    let arg_ptr = &restart_info.argument as *const _ as usize;
 
                     #[cfg(not(downtime_eval))] {
                         debug!("func_ptr {:#X}", func_ptr);
@@ -1001,14 +1004,7 @@ where
 fn remove_current_task_from_runqueue(current_task: &ExitableTaskRef) {
     // Special behavior when evaluating runqueues
     #[cfg(rq_eval)] {
-        // The special spillful version does nothing here, since it was already done in `internal_exit()`
-        #[cfg(runqueue_spillful)] {
-            // do nothing
-        }
-        // The regular spill-free version does brute-force removal of the task from ALL runqueues.
-        #[cfg(not(runqueue_spillful))] {
-            runqueue::remove_task_from_all(current_task).unwrap();
-        }
+        runqueue::remove_task_from_all(current_task).unwrap();
     }
 
     // In the regular case, we do not perform task migration between cores,
@@ -1029,7 +1025,7 @@ pub fn create_idle_task() -> Result<JoinableTaskRef, &'static str> {
     debug!("Spawning a new idle task on core {}", apic_id);
 
     new_task_builder(idle_task_entry, apic_id)
-        .name(format!("idle_task_core_{}", apic_id))
+        .name(format!("idle_task_core_{apic_id}"))
         .idle(apic_id)
         .spawn_restartable(None)
 }

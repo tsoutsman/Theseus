@@ -1,5 +1,7 @@
 //! Exception handlers that are task-aware, and will kill a task on an exception.
 
+// TODO: Add direct explanation to why this empty loop is necessary and criteria for replacing it with something else
+#![allow(clippy::empty_loop)]
 #![no_std]
 #![feature(abi_x86_interrupt)]
 
@@ -45,7 +47,10 @@ pub fn init(idt_ref: &'static LockedIdt) {
         idt.segment_not_present.set_handler_fn(segment_not_present_handler);
         idt.stack_segment_fault.set_handler_fn(stack_segment_fault_handler);
         idt.general_protection_fault.set_handler_fn(general_protection_fault_handler);
-        idt.page_fault.set_handler_fn(demand_paging::page_fault_handler);
+        let options = idt.page_fault.set_handler_fn(demand_paging::page_fault_handler);
+        unsafe { 
+            options.set_stack_index(demand_paging::PAGE_FAULT_HANDLER_IST_INDEX as u16);
+        }
         // reserved: 0x0F
         idt.x87_floating_point.set_handler_fn(x87_floating_point_handler);
         idt.alignment_check.set_handler_fn(alignment_check_handler);
