@@ -38,6 +38,7 @@ var sourcesIndex = JSON.parse('{\
 "dmar":["",[],["device_scope.rs","drhd.rs","lib.rs"]],\
 "dreadnought":["",[],["lib.rs","task.rs","time.rs"]],\
 "e1000":["",[],["lib.rs","regs.rs","test_e1000_driver.rs"]],\
+"early_tls":["",[],["lib.rs"]],\
 "environment":["",[],["lib.rs"]],\
 "ethernet_smoltcp_device":["",[],["lib.rs"]],\
 "event_types":["",[],["lib.rs"]],\
@@ -60,11 +61,13 @@ var sourcesIndex = JSON.parse('{\
 "heapfile":["",[],["lib.rs"]],\
 "hpet":["",[],["lib.rs"]],\
 "http_client":["",[],["lib.rs"]],\
+"idle":["",[["arch",[["x86_64",[],["intel.rs","mod.rs"]]],["mod.rs"]]],["lib.rs"]],\
 "intel_ethernet":["",[],["descriptors.rs","lib.rs"]],\
-"interrupts":["",[],["lib.rs"]],\
+"interrupts":["",[],["mod.rs"]],\
 "io":["",[],["lib.rs"]],\
 "ioapic":["",[],["lib.rs"]],\
 "iommu":["",[],["lib.rs","regs.rs"]],\
+"irq_safety":["",[],["held_interrupts.rs","lib.rs","mutex_irqsafe.rs","rwlock_irqsafe.rs"]],\
 "ixgbe":["",[],["lib.rs","queue_registers.rs","regs.rs","test_packets.rs","virtual_function.rs"]],\
 "kernel_config":["",[],["display.rs","lib.rs","memory.rs","time.rs"]],\
 "keyboard":["",[],["lib.rs"]],\
@@ -158,12 +161,14 @@ var sourcesIndex = JSON.parse('{\
 "str_ref":["",[],["lib.rs"]],\
 "task":["",[],["lib.rs"]],\
 "task_fs":["",[],["lib.rs"]],\
+"task_struct":["",[],["lib.rs"]],\
 "text_display":["",[],["lib.rs"]],\
 "text_terminal":["",[],["ansi_colors.rs","ansi_style.rs","lib.rs"]],\
 "theseus_features":["",[],["lib.rs"]],\
 "thread_local_macro":["",[],["lib.rs"]],\
 "time":["",[],["dummy.rs","lib.rs"]],\
 "tlb_shootdown":["",[],["lib.rs"]],\
+"tls_initializer":["",[],["lib.rs"]],\
 "tsc":["",[],["lib.rs"]],\
 "tss":["",[],["lib.rs"]],\
 "tty":["",[],["channel.rs","discipline.rs","lib.rs"]],\
