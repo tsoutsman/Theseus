@@ -43,6 +43,8 @@ macro_rules! implement_address {
             pub struct $TypeName(usize);
 
             impl $TypeName {
+               pub  const ZERO: $TypeName = $TypeName::zero();
+
                 #[doc = "Creates a new `" $TypeName "`, returning an error if the address is not canonical.\n\n \
                     This is useful for checking whether an address is valid before using it. 
                     For example, on x86_64, virtual addresses are canonical

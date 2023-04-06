@@ -53,7 +53,7 @@ static DESIGNATED_PAGES_LOW_END: Once<Page> = Once::new();
 ///
 /// TODO: once the heap is fully dynamic and not dependent on static addresses,
 /// we can exclude the heap from the designated region.
-static DESIGNATED_PAGES_HIGH_START: Page = Page::containing_address(VirtualAddress::new_canonical(UPCOMING_PAGE_TABLE_RECURSIVE_MEMORY_START));
+static DESIGNATED_PAGES_HIGH_START: Page = Page::containing_address(VirtualAddress::new_canonical(FRAME_ALLOCATOR_MEMORY_START));
 
 const MIN_PAGE: Page = Page::containing_address(VirtualAddress::zero());
 const MAX_PAGE: Page = Page::containing_address(VirtualAddress::new_canonical(MAX_VIRTUAL_ADDRESS));

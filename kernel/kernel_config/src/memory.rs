@@ -63,7 +63,7 @@ pub const KERNEL_HEAP_P4_INDEX: usize = ENTRIES_PER_PAGE_TABLE - 3;
 /// Value: 508. The 508th entry is used to temporarily recursively map the P4 root page table frame
 //              of an upcoming (new) page table such that it can be accessed and modified.
 pub const UPCOMING_PAGE_TABLE_RECURSIVE_P4_INDEX: usize = ENTRIES_PER_PAGE_TABLE - 4;
-
+pub const FRAME_ALLOCATOR_P4_INDEX: usize = ENTRIES_PER_PAGE_TABLE - 5;
 
 pub const MAX_PAGE_NUMBER: usize = MAX_VIRTUAL_ADDRESS / PAGE_SIZE;
 
@@ -112,3 +112,5 @@ pub const KERNEL_HEAP_MAX_SIZE: usize = ADDRESSABILITY_PER_P4_ENTRY;
 
 /// The system (page allocator) must not use addresses at or above this address.
 pub const UPCOMING_PAGE_TABLE_RECURSIVE_MEMORY_START: usize = canonicalize(UPCOMING_PAGE_TABLE_RECURSIVE_P4_INDEX << (P4_INDEX_SHIFT + PAGE_SHIFT));
+
+pub const FRAME_ALLOCATOR_MEMORY_START: usize = canonicalize(FRAME_ALLOCATOR_P4_INDEX << (P4_INDEX_SHIFT + PAGE_SHIFT));

@@ -30,10 +30,7 @@ pub use page_allocator::{
     allocate_pages_by_bytes, allocate_pages_by_bytes_at,
 };
 
-pub use frame_allocator::{
-    AllocatedFrames, MemoryRegionType, PhysicalMemoryRegion,
-    allocate_frames, allocate_frames_at, allocate_frames_by_bytes_at, allocate_frames_by_bytes,
-};
+pub use frame_allocator::{AllocatedFrames, allocate_frames};
 
 #[cfg(target_arch = "x86_64")]
 use memory_x86_64::{ tlb_flush_virt_addr, tlb_flush_all, get_p4, find_section_memory_bounds, get_vga_mem_addr };
@@ -94,7 +91,7 @@ pub fn create_contiguous_mapping<F: Into<PteFlagsArch>>(
 ) -> Result<(MappedPages, PhysicalAddress), &'static str> {
     let kernel_mmi_ref = get_kernel_mmi_ref().ok_or("create_contiguous_mapping(): KERNEL_MMI was not yet initialized!")?;
     let allocated_pages = allocate_pages_by_bytes(size_in_bytes).ok_or("memory::create_contiguous_mapping(): couldn't allocate contiguous pages!")?;
-    let allocated_frames = allocate_frames_by_bytes(size_in_bytes).ok_or("memory::create_contiguous_mapping(): couldn't allocate contiguous frames!")?;
+    let allocated_frames = allocate_frames(size_in_bytes)?;
     let starting_phys_addr = allocated_frames.start_address();
     let mp = kernel_mmi_ref.lock().page_table.map_allocated_pages_to(allocated_pages, allocated_frames, flags)?;
     Ok((mp, starting_phys_addr))
@@ -176,16 +173,19 @@ pub struct EarlyIdentityMappedPages {
 /// Initializes the virtual memory management system.
 /// Consumes the given BootInformation, because after the memory system is initialized,
 /// the original BootInformation will be unmapped and inaccessible.
-pub fn init(
-    boot_info: &impl BootInformation,
+pub fn init<T>(
+    boot_info: T,
     kernel_stack_start: VirtualAddress,
-) -> Result<InitialMemoryMappings, &'static str> {
+) -> Result<InitialMemoryMappings, &'static str>
+where
+    T: BootInformation
+{
     let low_memory_frames   = FrameRange::from_phys_addr(PhysicalAddress::zero(), 0x10_0000); // suggested by most OS developers
     
     // Now set up the list of free regions and reserved regions so we can initialize the frame allocator.
-    let mut free_regions: [Option<PhysicalMemoryRegion>; 32] = Default::default();
+    let mut free_regions: [Option<T::MemoryRegion<'_>>; 32] = Default::default();
     let mut free_index = 0;
-    let mut reserved_regions: [Option<PhysicalMemoryRegion>; 32] = Default::default();
+    let mut reserved_regions: [Option<T::MemoryRegion<'_>>; 32] = Default::default();
     let mut reserved_index = 0;
 
     reserved_regions[reserved_index] = Some(PhysicalMemoryRegion::new(low_memory_frames, MemoryRegionType::Reserved));
@@ -220,7 +220,7 @@ pub fn init(
         reserved_index += 1;
     }
 
-    let into_alloc_frames_fn = frame_allocator::init(free_regions.iter().flatten(), reserved_regions.iter().flatten())?;
+    let into_alloc_frames_fn = frame_allocator::init(free_regions.iter().flatten(), reserved_regions.iter().flatten());
     debug!("Initialized new frame allocator!");
     frame_allocator::dump_frame_allocator_state();
 
@@ -261,7 +261,6 @@ pub fn init_post_heap(
     // HERE: heap is initialized! We can now use `alloc` types.
 
     page_allocator::convert_to_heap_allocated();
-    frame_allocator::convert_to_heap_allocated();
 
     let extra_mapped_pages = alloc::vec![additional_mapped_pages, heap_mapped_pages];
    

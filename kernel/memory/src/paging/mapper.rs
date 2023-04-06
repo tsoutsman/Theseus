@@ -283,7 +283,7 @@ impl Mapper {
             .exclusive(true);
 
         for page in pages.deref().clone() {
-            let af = frame_allocator::allocate_frames(1).ok_or("map_allocated_pages(): couldn't allocate new frame, out of memory")?;
+            let af = frame_allocator::allocate_frame().ok_or("map_allocated_pages(): couldn't allocate new frame, out of memory")?;
 
             let p3 = self.p4_mut().next_table_create(page.p4_index(), higher_level_flags);
             let p2 = p3.next_table_create(page.p3_index(), higher_level_flags);
@@ -296,7 +296,7 @@ impl Mapper {
                 return Err("map_allocated_pages(): page was already in use");
             } 
 
-            p1[page.p1_index()].set_entry(af.as_allocated_frame(), actual_flags);
+            p1[page.p1_index()].set_entry(&af, actual_flags);
             core::mem::forget(af); // we currently forget frames allocated here since we don't yet have a way to track them.
         }
 

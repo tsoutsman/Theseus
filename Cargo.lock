@@ -1135,12 +1135,11 @@ dependencies = [
 name = "frame_allocator"
 version = "0.1.0"
 dependencies = [
- "intrusive-collections",
+ "boot_info",
  "kernel_config",
- "log",
  "memory_structs",
+ "page_allocator",
  "spin 0.9.4",
- "static_assertions",
 ]
 
 [[package]]

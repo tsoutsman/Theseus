@@ -8,6 +8,7 @@
 // except according to those terms.
 
 use core::mem::ManuallyDrop;
+use frame_allocator::AllocatedFrame;
 use log::error;
 use super::{
     AllocatedPages, AllocatedFrames, PageTable, MappedPages, VirtualAddress,
@@ -49,7 +50,7 @@ impl TemporaryPage {
     /// * `page_table`: the currently active [`PageTable`].
     pub fn create_and_map_table_frame(
         mut page: Option<AllocatedPages>,
-        frame: AllocatedFrames,
+        frame: &AllocatedFrame,
         page_table: &mut PageTable,
     ) -> Result<TemporaryPage, &'static str> {
         let mut vaddr = VirtualAddress::new_canonical(TEMPORARY_PAGE_VIRT_ADDR);
@@ -59,7 +60,7 @@ impl TemporaryPage {
         }
         let (mapped_page, frame) = page_table.internal_map_to(
             page.ok_or("Couldn't allocate a new Page for the temporary P4 table frame")?,
-            Owned(frame),
+            Owned(frame.into()),
             PteFlagsArch::new().valid(true).writable(true),
         )?;
         Ok(TemporaryPage {
