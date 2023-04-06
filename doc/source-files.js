@@ -23,7 +23,7 @@ var sourcesIndex = JSON.parse('{\
 "context_switch_regular":["",[],["lib.rs","x86_64.rs"]],\
 "context_switch_sse":["",[],["lib.rs"]],\
 "cow_arc":["",[],["lib.rs"]],\
-"cpu":["",[],["lib.rs","x86_64.rs"]],\
+"cpu":["",[],["lib.rs"]],\
 "crate_metadata":["",[],["lib.rs"]],\
 "crate_metadata_serde":["",[],["lib.rs"]],\
 "crate_name_utils":["",[],["lib.rs"]],\
@@ -38,7 +38,6 @@ var sourcesIndex = JSON.parse('{\
 "dmar":["",[],["device_scope.rs","drhd.rs","lib.rs"]],\
 "dreadnought":["",[],["lib.rs","task.rs","time.rs"]],\
 "e1000":["",[],["lib.rs","regs.rs","test_e1000_driver.rs"]],\
-"early_printer":["",[],["lib.rs"]],\
 "early_tls":["",[],["lib.rs"]],\
 "environment":["",[],["lib.rs"]],\
 "ethernet_smoltcp_device":["",[],["lib.rs"]],\
@@ -58,14 +57,13 @@ var sourcesIndex = JSON.parse('{\
 "framebuffer_printer":["",[],["lib.rs"]],\
 "fs_node":["",[],["lib.rs"]],\
 "gdt":["",[],["lib.rs"]],\
-"gic":["",[["gic",[],["cpu_interface_gicv2.rs","cpu_interface_gicv3.rs","dist_interface.rs","mod.rs","redist_interface.rs"]]],["lib.rs"]],\
 "heap":["",[],["lib.rs"]],\
 "heapfile":["",[],["lib.rs"]],\
 "hpet":["",[],["lib.rs"]],\
 "http_client":["",[],["lib.rs"]],\
 "idle":["",[["arch",[["x86_64",[],["intel.rs","mod.rs"]]],["mod.rs"]]],["lib.rs"]],\
 "intel_ethernet":["",[],["descriptors.rs","lib.rs"]],\
-"interrupts":["",[["x86_64",[],["mod.rs"]]],["lib.rs"]],\
+"interrupts":["",[],["mod.rs"]],\
 "io":["",[],["lib.rs"]],\
 "ioapic":["",[],["lib.rs"]],\
 "iommu":["",[],["lib.rs","regs.rs"]],\
@@ -91,7 +89,7 @@ var sourcesIndex = JSON.parse('{\
 "mod_mgmt":["",[],["lib.rs","parse_nano_core.rs","replace_nano_core_crates.rs","serde.rs"]],\
 "mouse":["",[],["lib.rs"]],\
 "mouse_data":["",[],["lib.rs"]],\
-"multicore_bringup":["",[],["lib.rs","x86_64.rs"]],\
+"multicore_bringup":["",[],["lib.rs"]],\
 "multiple_heaps":["",[],["lib.rs"]],\
 "mutex_preemption":["",[],["lib.rs","mutex_preempt.rs","rwlock_preempt.rs"]],\
 "mutex_sleep":["",[],["lib.rs","mutex.rs","rwlock.rs"]],\
@@ -111,6 +109,7 @@ var sourcesIndex = JSON.parse('{\
 "panic_entry":["",[],["lib.rs"]],\
 "panic_wrapper":["",[],["lib.rs"]],\
 "path":["",[],["lib.rs"]],\
+"pause":["",[],["lib.rs"]],\
 "pci":["",[],["lib.rs"]],\
 "percent_encoding":["",[],["lib.rs"]],\
 "physical_nic":["",[],["lib.rs"]],\
@@ -179,8 +178,6 @@ var sourcesIndex = JSON.parse('{\
 "virtual_nic":["",[],["lib.rs"]],\
 "wait_condition":["",[],["lib.rs"]],\
 "wait_queue":["",[],["lib.rs"]],\
-"waker":["",[],["lib.rs"]],\
-"waker_generic":["",[],["lib.rs"]],\
 "wasi_interpreter":["",[],["lib.rs","posix_file_system.rs","wasi_definitions.rs","wasi_syscalls.rs","wasmi_state_machine.rs"]],\
 "window":["",[],["lib.rs"]],\
 "window_inner":["",[],["lib.rs"]],\
