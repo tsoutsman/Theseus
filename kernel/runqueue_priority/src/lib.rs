@@ -1,49 +1,47 @@
-//! This crate contains the `RunQueue` structure, for priority scheduler. 
+//! This crate contains the `RunQueue` structure, for priority scheduler.
 //! `RunQueue` structure is essentially a list of Tasks
 //! that it used for scheduling purposes.
-//! 
 
 #![no_std]
 
 extern crate alloc;
-#[macro_use] extern crate log;
-extern crate mutex_preemption;
+#[macro_use]
+extern crate log;
 extern crate atomic_linked_list;
+extern crate mutex_preemption;
 extern crate task;
 
 #[cfg(single_simd_task_optimization)]
 extern crate single_simd_task_optimization;
 
 use alloc::collections::VecDeque;
-use mutex_preemption::RwLockPreempt;
 use atomic_linked_list::atomic_map::AtomicMap;
-use task::TaskRef;
 use core::ops::{Deref, DerefMut};
+use mutex_preemption::RwLockPreempt;
+use task::TaskRef;
 
-pub const MAX_PRIORITY: u8 = 40;
 pub const DEFAULT_PRIORITY: u8 = 20;
 pub const INITIAL_TOKENS: usize = 10;
 
 /// A cloneable reference to a `Taskref` that exposes more methods
 /// related to task scheduling.
-/// 
-/// The `PriorityTaskRef` type is necessary since differnt scheduling algorithms 
+///
+/// The `PriorityTaskRef` type is necessary since differnt scheduling algorithms
 /// require different data associated with the task to be stored alongside.
 /// This makes storing them alongside the task prohibitive.
 /// context_switches is not used in scheduling algorithm
-/// `PriorityTaskRef` implements `Deref` and `DerefMut` traits, which dereferences to `TaskRef`. 
+/// `PriorityTaskRef` implements `Deref` and `DerefMut` traits, which
+/// dereferences to `TaskRef`.
 #[derive(Debug, Clone)]
-pub struct PriorityTaskRef{
+pub struct PriorityTaskRef {
     /// `TaskRef` wrapped by `PriorityTaskRef`
     taskref: TaskRef,
-
-    /// Priority assigned for the task. Max priority = 40, Min priority = 0.
     pub priority: u8,
-
-    /// Remaining tokens in this epoch. A task will be scheduled in an epoch until tokens run out
+    /// Remaining tokens in this epoch. A task will be scheduled in an epoch
+    /// until tokens run out
     pub tokens_remaining: usize,
-
-    /// Number of context switches the task has undergone. Not used in scheduling algorithm
+    /// Number of context switches the task has undergone. Not used in
+    /// scheduling algorithm
     context_switches: usize,
 }
 
@@ -62,7 +60,7 @@ impl DerefMut for PriorityTaskRef {
 
 impl PriorityTaskRef {
     /// Creates a new `PriorityTaskRef` that wraps the given `TaskRef`.
-    /// We just give an initial number of tokens to run the task till 
+    /// We just give an initial number of tokens to run the task till
     /// next scheduling epoch
     pub fn new(taskref: TaskRef) -> PriorityTaskRef {
         PriorityTaskRef {
@@ -79,16 +77,17 @@ impl PriorityTaskRef {
     }
 }
 
-
-/// There is one runqueue per core, each core only accesses its own private runqueue
-/// and allows the scheduler to select a task from that runqueue to schedule in.
+/// There is one runqueue per core, each core only accesses its own private
+/// runqueue and allows the scheduler to select a task from that runqueue to
+/// schedule in.
 static RUNQUEUES: AtomicMap<u8, RwLockPreempt<RunQueue>> = AtomicMap::new();
 
-/// A list of references to `Task`s (`PriorityTaskRef`s) 
-/// that is used to store the `Task`s (and associated scheduler related data) 
+/// A list of references to `Task`s (`PriorityTaskRef`s)
+/// that is used to store the `Task`s (and associated scheduler related data)
 /// that are runnable on a given core.
 /// A queue is used for the token based prioirty scheduler.
-/// `Runqueue` implements `Deref` and `DerefMut` traits, which dereferences to `VecDeque`.
+/// `Runqueue` implements `Deref` and `DerefMut` traits, which dereferences to
+/// `VecDeque`.
 #[derive(Debug)]
 pub struct RunQueue {
     core: u8,
@@ -109,20 +108,20 @@ impl DerefMut for RunQueue {
 }
 
 impl RunQueue {
-
-    /// Moves the `TaskRef` at the given index in this `RunQueue` to the end (back) of this `RunQueue`,
-    /// and returns a cloned reference to that `TaskRef`. The number of tokens is reduced by one and number of context
-    /// switches is increased by one. This function is used when the task is selected by the scheduler
-    pub fn update_and_move_to_end(&mut self, index: usize, tokens : usize) -> Option<TaskRef> {
+    /// Moves the `TaskRef` at the given index in this `RunQueue` to the end
+    /// (back) of this `RunQueue`, and returns a cloned reference to that
+    /// `TaskRef`. The number of tokens is reduced by one and number of context
+    /// switches is increased by one. This function is used when the task is
+    /// selected by the scheduler
+    pub fn update_and_move_to_end(&mut self, index: usize, tokens: usize) -> Option<TaskRef> {
         if let Some(mut priority_task_ref) = self.remove(index) {
             priority_task_ref.tokens_remaining = tokens;
             priority_task_ref.increment_context_switches();
             let taskref = priority_task_ref.taskref.clone();
             self.push_back(priority_task_ref);
             Some(taskref)
-        } 
-        else {
-            None 
+        } else {
+            None
         }
     }
 
@@ -136,10 +135,12 @@ impl RunQueue {
         });
 
         if RUNQUEUES.insert(which_core, new_rq).is_some() {
-            error!("BUG: RunQueue::init(): runqueue already exists for core {}!", which_core);
+            error!(
+                "BUG: RunQueue::init(): runqueue already exists for core {}!",
+                which_core
+            );
             Err("runqueue already exists for this core")
-        }
-        else {
+        } else {
             // there shouldn't already be a RunQueue for this core
             Ok(())
         }
@@ -150,12 +151,11 @@ impl RunQueue {
         RUNQUEUES.get(&which_core)
     }
 
-
-    /// Returns the "least busy" core, which is currently very simple, based on runqueue size.
+    /// Returns the "least busy" core, which is currently very simple, based on
+    /// runqueue size.
     pub fn get_least_busy_core() -> Option<u8> {
         Self::get_least_busy_runqueue().map(|rq| rq.read().core)
     }
-
 
     /// Returns the `RunQueue` for the "least busy" core.
     /// See [`get_least_busy_core()`](#method.get_least_busy_core)
@@ -169,8 +169,7 @@ impl RunQueue {
                 if rq_size < min.1 {
                     min_rq = Some((rq, rq_size));
                 }
-            }
-            else {
+            } else {
                 min_rq = Some((rq, rq_size));
             }
         }
@@ -178,8 +177,9 @@ impl RunQueue {
         min_rq.map(|m| m.0)
     }
 
-    /// Chooses the "least busy" core's runqueue (based on simple runqueue-size-based load balancing)
-    /// and adds the given `Task` reference to that core's runqueue.
+    /// Chooses the "least busy" core's runqueue (based on simple
+    /// runqueue-size-based load balancing) and adds the given `Task`
+    /// reference to that core's runqueue.
     pub fn add_task_to_any_runqueue(task: TaskRef) -> Result<(), &'static str> {
         let rq = RunQueue::get_least_busy_runqueue()
             .or_else(|| RUNQUEUES.iter().next().map(|r| r.1))
@@ -188,8 +188,12 @@ impl RunQueue {
         rq.write().add_task(task)
     }
 
-    /// Convenience method that adds the given `Task` reference to given core's runqueue.
-    pub fn add_task_to_specific_runqueue(which_core: u8, task: TaskRef) -> Result<(), &'static str> {
+    /// Convenience method that adds the given `Task` reference to given core's
+    /// runqueue.
+    pub fn add_task_to_specific_runqueue(
+        which_core: u8,
+        task: TaskRef,
+    ) -> Result<(), &'static str> {
         RunQueue::get_runqueue(which_core)
             .ok_or("Couldn't get RunQueue for the given core")?
             .write()
@@ -197,14 +201,14 @@ impl RunQueue {
     }
 
     /// Adds a `TaskRef` to this RunQueue.
-    fn add_task(&mut self, task: TaskRef) -> Result<(), &'static str> {        
+    fn add_task(&mut self, task: TaskRef) -> Result<(), &'static str> {
         #[cfg(not(loscd_eval))]
         debug!("Adding task to runqueue_priority {}, {:?}", self.core, task);
         let priority_task_ref = PriorityTaskRef::new(task);
         self.push_back(priority_task_ref);
-        
+
         #[cfg(single_simd_task_optimization)]
-        {   
+        {
             warn!("USING SINGLE_SIMD_TASK_OPTIMIZATION VERSION OF RUNQUEUE::ADD_TASK");
             // notify simd_personality crate about runqueue change, but only for SIMD tasks
             if task.simd {
@@ -217,10 +221,14 @@ impl RunQueue {
 
     /// Removes a `TaskRef` from this RunQueue.
     pub fn remove_task(&mut self, task: &TaskRef) -> Result<(), &'static str> {
-        debug!("Removing task from runqueue_priority {}, {:?}", self.core, task);
+        debug!(
+            "Removing task from runqueue_priority {}, {:?}",
+            self.core, task
+        );
         self.retain(|x| &x.taskref != task);
 
-        #[cfg(single_simd_task_optimization)] {   
+        #[cfg(single_simd_task_optimization)]
+        {
             warn!("USING SINGLE_SIMD_TASK_OPTIMIZATION VERSION OF RUNQUEUE::REMOVE_TASK");
             // notify simd_personality crate about runqueue change, but only for SIMD tasks
             if task.simd {
@@ -231,9 +239,10 @@ impl RunQueue {
         Ok(())
     }
 
-    /// Removes a `TaskRef` from all `RunQueue`s that exist on the entire system.
-    /// 
-    /// This is a brute force approach that iterates over all runqueues. 
+    /// Removes a `TaskRef` from all `RunQueue`s that exist on the entire
+    /// system.
+    ///
+    /// This is a brute force approach that iterates over all runqueues.
     pub fn remove_task_from_all(task: &TaskRef) -> Result<(), &'static str> {
         for (_core, rq) in RUNQUEUES.iter() {
             rq.write().remove_task(task)?;
@@ -241,19 +250,20 @@ impl RunQueue {
         Ok(())
     }
 
-    /// The internal function that sets the priority of a given `Task` in a single `RunQueue`
+    /// The internal function that sets the priority of a given `Task` in a
+    /// single `RunQueue`
     fn set_priority_internal(&mut self, task: &TaskRef, priority: u8) -> Result<(), &'static str> {
         // debug!("called_assign_priority_internal called per core");
         for x in self.iter_mut() {
-            if &x.taskref == task{
+            if &x.taskref == task {
                 debug!("changed priority from {}  to {} ", x.priority, priority);
                 x.priority = priority;
             }
         }
         Ok(())
-    } 
+    }
 
-    /// Sets the priority of the given `Task` in all the `RunQueue` structures 
+    /// Sets the priority of the given `Task` in all the `RunQueue` structures
     pub fn set_priority(task: &TaskRef, priority: u8) -> Result<(), &'static str> {
         // debug!("assign priority wrapper. called once per call");
         for (_core, rq) in RUNQUEUES.iter() {
@@ -288,5 +298,4 @@ impl RunQueue {
         }
         None
     }
-
 }
