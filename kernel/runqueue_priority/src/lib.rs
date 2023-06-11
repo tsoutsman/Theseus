@@ -40,9 +40,6 @@ pub struct PriorityTaskRef {
     /// Remaining tokens in this epoch. A task will be scheduled in an epoch
     /// until tokens run out
     pub tokens_remaining: usize,
-    /// Number of context switches the task has undergone. Not used in
-    /// scheduling algorithm
-    context_switches: usize,
 }
 
 impl Deref for PriorityTaskRef {
@@ -67,13 +64,7 @@ impl PriorityTaskRef {
             taskref,
             priority: DEFAULT_PRIORITY,
             tokens_remaining: INITIAL_TOKENS,
-            context_switches: 0,
         }
-    }
-
-    /// Increment the number of times the task is picked
-    pub fn increment_context_switches(&mut self) {
-        self.context_switches = self.context_switches.saturating_add(1);
     }
 }
 
@@ -91,11 +82,12 @@ static RUNQUEUES: AtomicMap<u8, RwLockPreempt<RunQueue>> = AtomicMap::new();
 #[derive(Debug)]
 pub struct RunQueue {
     core: u8,
-    queue: VecDeque<PriorityTaskRef>,
+    queue: BinaryHeap<PriorityTaskRef>,
 }
 
 impl Deref for RunQueue {
     type Target = VecDeque<PriorityTaskRef>;
+
     fn deref(&self) -> &VecDeque<PriorityTaskRef> {
         &self.queue
     }
@@ -116,7 +108,6 @@ impl RunQueue {
     pub fn update_and_move_to_end(&mut self, index: usize, tokens: usize) -> Option<TaskRef> {
         if let Some(mut priority_task_ref) = self.remove(index) {
             priority_task_ref.tokens_remaining = tokens;
-            priority_task_ref.increment_context_switches();
             let taskref = priority_task_ref.taskref.clone();
             self.push_back(priority_task_ref);
             Some(taskref)
