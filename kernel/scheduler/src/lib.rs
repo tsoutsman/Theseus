@@ -1,4 +1,5 @@
-//! Offers the ability to control or configure the active task scheduling policy.
+//! Offers the ability to control or configure the active task scheduling
+//! policy.
 //!
 //! ## What is and isn't in this crate?
 //! This crate also defines the timer interrupt handler used for preemptive
@@ -15,45 +16,51 @@
 #![cfg_attr(target_arch = "x86_64", feature(abi_x86_interrupt))]
 
 cfg_if::cfg_if! {
-    if #[cfg(priority_scheduler)] {
+    if #[cfg(epoch_scheduler)] {
+        extern crate scheduler_epoch as scheduler;
+    } else if #[cfg(priority_scheduler)] {
         extern crate scheduler_priority as scheduler;
-    } else if #[cfg(realtime_scheduler)] {
-        extern crate scheduler_realtime as scheduler;
     } else {
         extern crate scheduler_round_robin as scheduler;
     }
 }
 
-use interrupts::{self, CPU_LOCAL_TIMER_IRQ, interrupt_handler, eoi, EoiBehaviour};
+use interrupts::{self, eoi, interrupt_handler, EoiBehaviour, CPU_LOCAL_TIMER_IRQ};
 use task::{self, TaskRef};
 
-/// A re-export of [`task::schedule()`] for convenience and legacy compatibility.
+/// A re-export of [`task::schedule()`] for convenience and legacy
+/// compatibility.
 pub use task::schedule;
 
-
-/// Initializes the scheduler on this system using the policy set at compiler time.
+/// Initializes the scheduler on this system using the policy set at compiler
+/// time.
 ///
 /// Also registers a timer interrupt handler for preemptive scheduling.
 ///
 /// Currently, there is a single scheduler policy for the whole system.
-/// The policy is selected by specifying a Rust `cfg` value at build time, like so:
-/// * `make THESEUS_CONFIG=priority_scheduler` --> priority scheduler.
-/// * `make THESEUS_CONFIG=realtime_scheduler` --> "realtime" (rate monotonic) scheduler.
-/// * `make` --> basic round-robin scheduler, the default.
+/// The policy is selected by specifying a Rust `cfg` value at build time, like
+/// so:
+/// * `make THESEUS_CONFIG=epoch_scheduler` --> epoch scheduler
+/// * `make THESEUS_CONFIG=priority_scheduler` --> priority scheduler
+/// * `make` --> round-robin scheduler
 pub fn init() -> Result<(), &'static str> {
     task::set_scheduler_policy(scheduler::select_next_task);
 
-    #[cfg(target_arch = "x86_64")] {
-        interrupts::register_interrupt(
-            CPU_LOCAL_TIMER_IRQ,
-            timer_tick_handler,
-        ).map_err(|_handler| {
-            log::error!("BUG: interrupt {CPU_LOCAL_TIMER_IRQ} was already registered to handler {_handler:#X}");
-            "BUG: CPU-local timer interrupt was already registered to a handler"
-        })
+    #[cfg(target_arch = "x86_64")]
+    {
+        interrupts::register_interrupt(CPU_LOCAL_TIMER_IRQ, timer_tick_handler).map_err(
+            |_handler| {
+                log::error!(
+                    "BUG: interrupt {CPU_LOCAL_TIMER_IRQ} was already registered to handler \
+                     {_handler:#X}"
+                );
+                "BUG: CPU-local timer interrupt was already registered to a handler"
+            },
+        )
     }
 
-    #[cfg(target_arch = "aarch64")] {
+    #[cfg(target_arch = "aarch64")]
+    {
         interrupts::init_timer(timer_tick_handler)?;
         interrupts::enable_timer(true);
         Ok(())
@@ -70,7 +77,11 @@ interrupt_handler!(timer_tick_handler, None, _stack_frame, {
         use core::sync::atomic::{AtomicUsize, Ordering};
         static CPU_LOCAL_TIMER_TICKS: AtomicUsize = AtomicUsize::new(0);
         let _ticks = CPU_LOCAL_TIMER_TICKS.fetch_add(1, Ordering::Relaxed);
-        log::info!("(CPU {}) CPU-LOCAL TIMER HANDLER! TICKS = {}", cpu::current_cpu(), _ticks);
+        log::info!(
+            "(CPU {}) CPU-LOCAL TIMER HANDLER! TICKS = {}",
+            cpu::current_cpu(),
+            _ticks
+        );
     }
 
     // Inform the `sleep` crate that it should update its inner tick count
@@ -93,33 +104,13 @@ interrupt_handler!(timer_tick_handler, None, _stack_frame, {
 });
 
 /// Changes the priority of the given task with the given priority level.
-/// Priority values must be between 40 (maximum priority) and 0 (minimum prriority).
-/// This function returns an error when a scheduler without priority is loaded. 
 pub fn set_priority(_task: &TaskRef, _priority: u8) -> Result<(), &'static str> {
-    #[cfg(priority_scheduler)] {
-        scheduler_priority::set_priority(_task, _priority)
-    }
-    #[cfg(not(priority_scheduler))] {
-        Err("no scheduler that uses task priority is currently loaded")
-    }
+    scheduler::set_priority(_task, _priority)
 }
 
 /// Returns the priority of a given task.
+///
 /// This function returns None when a scheduler without priority is loaded.
 pub fn get_priority(_task: &TaskRef) -> Option<u8> {
-    #[cfg(priority_scheduler)] {
-        scheduler_priority::get_priority(_task)
-    }
-    #[cfg(not(priority_scheduler))] {
-        None
-    }
-}
-
-pub fn set_periodicity(_task: &TaskRef, _period: usize) -> Result<(), &'static str> {
-    #[cfg(realtime_scheduler)] {
-        scheduler_realtime::set_periodicity(_task, _period)
-    }
-    #[cfg(not(realtime_scheduler))] {
-        Err("no scheduler that supports periodic tasks is currently loaded")
-    }
+    scheduler::get_priority(_task)
 }

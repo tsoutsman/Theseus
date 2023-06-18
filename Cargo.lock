@@ -3136,8 +3136,8 @@ dependencies = [
  "cfg-if 1.0.0",
  "lazy_static",
  "log",
+ "runqueue_epoch",
  "runqueue_priority",
- "runqueue_realtime",
  "runqueue_round_robin",
  "single_simd_task_optimization",
  "sync_preemption",
@@ -3145,7 +3145,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "runqueue_priority"
+name = "runqueue_epoch"
 version = "0.1.0"
 dependencies = [
  "atomic_linked_list",
@@ -3156,7 +3156,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "runqueue_realtime"
+name = "runqueue_priority"
 version = "0.1.0"
 dependencies = [
  "atomic_linked_list",
@@ -3215,12 +3215,23 @@ dependencies = [
  "cpu_local_preemption",
  "interrupts",
  "log",
+ "scheduler_epoch",
  "scheduler_priority",
- "scheduler_realtime",
  "scheduler_round_robin",
  "sleep",
  "task",
  "x86_64",
+]
+
+[[package]]
+name = "scheduler_epoch"
+version = "0.1.0"
+dependencies = [
+ "log",
+ "runqueue",
+ "runqueue_epoch",
+ "spin 0.9.4",
+ "task",
 ]
 
 [[package]]
@@ -3240,18 +3251,7 @@ name = "scheduler_priority"
 version = "0.1.0"
 dependencies = [
  "log",
- "runqueue",
  "runqueue_priority",
- "spin 0.9.4",
- "task",
-]
-
-[[package]]
-name = "scheduler_realtime"
-version = "0.1.0"
-dependencies = [
- "log",
- "runqueue_realtime",
  "task",
 ]
 
@@ -3924,7 +3924,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "test_realtime"
+name = "test_priority_scheduler"
 version = "0.1.0"
 dependencies = [
  "app_io",
@@ -4098,7 +4098,7 @@ dependencies = [
  "test_mlx5",
  "test_mutex_sleep",
  "test_panic",
- "test_realtime",
+ "test_priority_scheduler",
  "test_restartable",
  "test_scheduler",
  "test_serial_echo",

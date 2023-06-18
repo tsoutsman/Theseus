@@ -1,5 +1,3 @@
-//! Demo of scheduling a periodic task using the realtime scheduler.
-//! 
 //! One potential direction for future testing could be the following:
 //! Let the program take in arguments `n` and `p1` ... `pm`. 
 //! For each `p_i`, we:
@@ -9,7 +7,6 @@
 //! 4. Calculate statistics on how much the time between successive calls
 //!    to the timing statement deviates from the expected time, i.e. the period `pi`.
 //!    * This is one way to assess the accuracy of the `sleep` function.
-//!
 
 #![no_std]
 
@@ -27,11 +24,11 @@ use alloc::{
 };
 
 pub fn main(_args: Vec<String>) -> isize {
-    #[cfg(not(realtime_scheduler))] {
+    #[cfg(not(priority_scheduler))] {
         println!("Error: `realtime_scheduler` cfg was not enabled!");
         -1
     }
-    #[cfg(realtime_scheduler)] {
+    #[cfg(priority_scheduler)] {
         println!("Testing periodic task(s) with the realtime scheduler!");
         // Build and spawn two real time periodic task(s).
         // Start them as blocked in order to set the periods before they run
@@ -39,7 +36,7 @@ pub fn main(_args: Vec<String>) -> isize {
         let periodic_task_1 = periodic_tb1.spawn().unwrap();
         
         // Set the periods of the task
-        scheduler::set_periodicity(&periodic_task_1, 1000).unwrap();
+        scheduler::set_priority(&periodic_task_1, 255).unwrap();
 
         // start the tasks
         periodic_task_1.unblock().unwrap();

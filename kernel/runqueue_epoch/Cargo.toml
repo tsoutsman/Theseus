@@ -1,8 +1,9 @@
 [package]
-authors = ["Kevin Boos <kevinaboos@gmail.com>"]
-name = "runqueue_round_robin"
-description = "Run queue for the round robin scheduler"
+authors = ["Namitha Liyanage <Namithaliyanage@gmail.com>"]
+name = "runqueue_epoch"
+description = "Run queue for the epoch scheduler"
 version = "0.1.0"
+edition = "2021"
 
 [dependencies]
 log = "0.4.8"
