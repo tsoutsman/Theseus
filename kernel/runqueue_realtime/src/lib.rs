@@ -17,15 +17,17 @@
 //! with aperiodic tasks being selected only when no periodic tasks are runnable.
 
 #![no_std]
+// NOTE: Can upgrade Rust version to stabilise.
+#![feature(binary_heap_retain)]
 
 extern crate task;
-extern crate mutex_preemption;
+extern crate sync_preemption;
 extern crate alloc;
 #[macro_use] extern crate log;
 extern crate atomic_linked_list;
 
 use task::TaskRef;
-use mutex_preemption::RwLockPreempt;
+use sync_preemption::PreemptionSafeRwLock;
 use alloc::collections::VecDeque;
 use core::ops::{Deref, DerefMut};
 use atomic_linked_list::atomic_map::AtomicMap;
@@ -42,6 +44,27 @@ pub struct RealtimeTaskRef {
     /// Number of context switches the task has undergone. Not used in scheduling algorithm
     context_switches: usize,
 }
+
+// impl PartialEq for PriorityTaskRef {
+//     fn eq(&self, other: &Self) -> bool {
+//         self.tokens_remaining == other.tokens_remaining
+//     }
+// }
+
+// // The equivalence relation is reflexive.
+// impl Eq for PriorityTaskRef {}
+
+// impl PartialOrd for PriorityTaskRef {
+//     fn partial_cmp(&self, other: &Self) -> Option<core::cmp::Ordering> {
+//         Some(self.cmp(other))
+//     }
+// }
+
+// impl Ord for PriorityTaskRef {
+//     fn cmp(&self, other: &Self) -> core::cmp::Ordering {
+//         self.tokens_remaining.cmp(&other.tokens_remaining)
+//     }
+// }
 
 impl Deref for RealtimeTaskRef {
     type Target = TaskRef;
@@ -95,7 +118,7 @@ impl RealtimeTaskRef {
 
 /// There is one runqueue per core, each core only accesses its own private runqueue
 /// and allows the scheduler to select a task from that runqueue to schedule in
-static RUNQUEUES: AtomicMap<u8, RwLockPreempt<RunQueue>> = AtomicMap::new();
+static RUNQUEUES: AtomicMap<u8, PreemptionSafeRwLock<RunQueue>> = AtomicMap::new();
 
 /// A list of `Task`s and their associated realtime scheduler data that may be run on a given CPU core.
 ///
@@ -149,7 +172,7 @@ impl RunQueue {
     pub fn init(which_core: u8) -> Result<(), &'static str> {
         #[cfg(not(loscd_eval))]
         trace!("Created runqueue (realtime) for core {}", which_core);
-        let new_rq = RwLockPreempt::new(RunQueue {
+        let new_rq = PreemptionSafeRwLock::new(RunQueue {
             core: which_core,
             queue: VecDeque::new(),
         });
@@ -165,7 +188,7 @@ impl RunQueue {
     }
 
     /// Returns `RunQueue` for the given core, which is an `apic_id`.
-    pub fn get_runqueue(which_core: u8) -> Option<&'static RwLockPreempt<RunQueue>> {
+    pub fn get_runqueue(which_core: u8) -> Option<&'static PreemptionSafeRwLock<RunQueue>> {
         RUNQUEUES.get(&which_core)
     } 
 
@@ -176,8 +199,8 @@ impl RunQueue {
 
     /// Returns the `RunQueue` for the "least busy" core.
     /// See [`get_least_busy_core()`](#method.get_least_busy_core)
-    fn get_least_busy_runqueue() -> Option<&'static RwLockPreempt<RunQueue>> {
-        let mut min_rq: Option<(&'static RwLockPreempt<RunQueue>, usize)> = None;
+    fn get_least_busy_runqueue() -> Option<&'static PreemptionSafeRwLock<RunQueue>> {
+        let mut min_rq: Option<(&'static PreemptionSafeRwLock<RunQueue>, usize)> = None;
 
         for (_, rq) in RUNQUEUES.iter() {
             let rq_size = rq.read().queue.len();

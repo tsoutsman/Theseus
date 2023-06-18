@@ -1186,6 +1186,7 @@ dependencies = [
  "kernel_config",
  "log",
  "memory_structs",
+ "range_inclusive",
  "spin 0.9.4",
  "static_assertions",
 ]
@@ -1553,6 +1554,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "interrupt_controller"
+version = "0.1.0"
+dependencies = [
+ "apic",
+ "arm_boards",
+ "cpu",
+ "gic",
+ "ioapic",
+ "irq_safety",
+ "log",
+ "memory",
+]
+
+[[package]]
 name = "interrupts"
 version = "0.1.0"
 dependencies = [
@@ -1564,6 +1579,7 @@ dependencies = [
  "exceptions_early",
  "gdt",
  "gic",
+ "interrupt_controller",
  "irq_safety",
  "kernel_config",
  "locked_idt",
@@ -2023,10 +2039,10 @@ dependencies = [
 name = "memory_structs"
 version = "0.1.0"
 dependencies = [
- "bit_field 0.7.0",
  "derive_more",
  "kernel_config",
  "paste",
+ "range_inclusive",
  "zerocopy",
 ]
 
@@ -2252,15 +2268,6 @@ dependencies = [
  "slabmalloc",
  "slabmalloc_safe",
  "slabmalloc_unsafe",
- "spin 0.9.4",
-]
-
-[[package]]
-name = "mutex_preemption"
-version = "0.1.0"
-dependencies = [
- "cpu_local_preemption",
- "lockable",
  "spin 0.9.4",
 ]
 
@@ -2928,6 +2935,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "range_inclusive"
+version = "0.1.0"
+
+[[package]]
 name = "rangemap"
 version = "1.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3125,11 +3136,11 @@ dependencies = [
  "cfg-if 1.0.0",
  "lazy_static",
  "log",
- "mutex_preemption",
  "runqueue_priority",
  "runqueue_realtime",
  "runqueue_round_robin",
  "single_simd_task_optimization",
+ "sync_preemption",
  "task",
 ]
 
@@ -3139,8 +3150,8 @@ version = "0.1.0"
 dependencies = [
  "atomic_linked_list",
  "log",
- "mutex_preemption",
  "single_simd_task_optimization",
+ "sync_preemption",
  "task",
 ]
 
@@ -3150,7 +3161,7 @@ version = "0.1.0"
 dependencies = [
  "atomic_linked_list",
  "log",
- "mutex_preemption",
+ "sync_preemption",
  "task",
 ]
 
@@ -3160,8 +3171,8 @@ version = "0.1.0"
 dependencies = [
  "atomic_linked_list",
  "log",
- "mutex_preemption",
  "single_simd_task_optimization",
+ "sync_preemption",
  "task",
 ]
 
@@ -3395,7 +3406,6 @@ dependencies = [
 name = "signal_handler"
 version = "0.1.0"
 dependencies = [
- "bitflags",
  "log",
  "memory",
  "spin 0.9.4",
@@ -3712,6 +3722,7 @@ name = "sync_block"
 version = "0.1.0"
 dependencies = [
  "cpu_local_preemption",
+ "log",
  "mpmc_queue",
  "scheduler",
  "sync",

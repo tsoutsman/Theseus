@@ -172,16 +172,8 @@ fn assign_tokens(apic_id: u8) -> bool  {
                 return false;
             }
         }
-            
-        // found a runnable task!
-        // We add its priority
-        // debug!("assign_tokens(): AP {} Task {:?} priority {}", apic_id, &*t, t.priority);
+
         total_priorities = total_priorities.saturating_add(1).saturating_add(t.priority as usize);
-        
-        
-        
-        // debug!("assign_tokens(): AP {} chose Task {:?}", apic_id, &*t);
-        // break; 
     }
 
     // We keep each epoch for 100 tokens by default

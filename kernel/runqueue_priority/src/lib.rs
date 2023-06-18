@@ -5,21 +5,15 @@
 #![no_std]
 
 extern crate alloc;
-#[macro_use]
-extern crate log;
-extern crate atomic_linked_list;
-extern crate mutex_preemption;
-extern crate task;
-
-#[cfg(single_simd_task_optimization)]
-extern crate single_simd_task_optimization;
 
 use alloc::collections::VecDeque;
 use atomic_linked_list::atomic_map::AtomicMap;
 use core::ops::{Deref, DerefMut};
-use mutex_preemption::RwLockPreempt;
+use log::{debug, error, trace};
+use sync_preemption::PreemptionSafeRwLock;
 use task::TaskRef;
 
+pub const MAX_PRIORITY: u8 = 40;
 pub const DEFAULT_PRIORITY: u8 = 20;
 pub const INITIAL_TOKENS: usize = 10;
 
@@ -44,6 +38,7 @@ pub struct PriorityTaskRef {
 
 impl Deref for PriorityTaskRef {
     type Target = TaskRef;
+
     fn deref(&self) -> &TaskRef {
         &self.taskref
     }
@@ -71,7 +66,7 @@ impl PriorityTaskRef {
 /// There is one runqueue per core, each core only accesses its own private
 /// runqueue and allows the scheduler to select a task from that runqueue to
 /// schedule in.
-static RUNQUEUES: AtomicMap<u8, RwLockPreempt<RunQueue>> = AtomicMap::new();
+static RUNQUEUES: AtomicMap<u8, PreemptionSafeRwLock<RunQueue>> = AtomicMap::new();
 
 /// A list of references to `Task`s (`PriorityTaskRef`s)
 /// that is used to store the `Task`s (and associated scheduler related data)
@@ -82,19 +77,19 @@ static RUNQUEUES: AtomicMap<u8, RwLockPreempt<RunQueue>> = AtomicMap::new();
 #[derive(Debug)]
 pub struct RunQueue {
     core: u8,
-    queue: BinaryHeap<PriorityTaskRef>,
+    queue: VecDeque<PriorityTaskRef>,
 }
 
 impl Deref for RunQueue {
     type Target = VecDeque<PriorityTaskRef>;
 
-    fn deref(&self) -> &VecDeque<PriorityTaskRef> {
+    fn deref(&self) -> &Self::Target {
         &self.queue
     }
 }
 
 impl DerefMut for RunQueue {
-    fn deref_mut(&mut self) -> &mut VecDeque<PriorityTaskRef> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.queue
     }
 }
@@ -120,7 +115,7 @@ impl RunQueue {
     pub fn init(which_core: u8) -> Result<(), &'static str> {
         #[cfg(not(loscd_eval))]
         trace!("Created runqueue (priority) for core {}", which_core);
-        let new_rq = RwLockPreempt::new(RunQueue {
+        let new_rq = PreemptionSafeRwLock::new(RunQueue {
             core: which_core,
             queue: VecDeque::new(),
         });
@@ -138,7 +133,7 @@ impl RunQueue {
     }
 
     /// Returns `RunQueue` for the given core, which is an `apic_id`.
-    pub fn get_runqueue(which_core: u8) -> Option<&'static RwLockPreempt<RunQueue>> {
+    pub fn get_runqueue(which_core: u8) -> Option<&'static PreemptionSafeRwLock<RunQueue>> {
         RUNQUEUES.get(&which_core)
     }
 
@@ -150,8 +145,8 @@ impl RunQueue {
 
     /// Returns the `RunQueue` for the "least busy" core.
     /// See [`get_least_busy_core()`](#method.get_least_busy_core)
-    fn get_least_busy_runqueue() -> Option<&'static RwLockPreempt<RunQueue>> {
-        let mut min_rq: Option<(&'static RwLockPreempt<RunQueue>, usize)> = None;
+    fn get_least_busy_runqueue() -> Option<&'static PreemptionSafeRwLock<RunQueue>> {
+        let mut min_rq: Option<(&'static PreemptionSafeRwLock<RunQueue>, usize)> = None;
 
         for (_, rq) in RUNQUEUES.iter() {
             let rq_size = rq.read().queue.len();
