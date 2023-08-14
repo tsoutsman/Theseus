@@ -44,6 +44,11 @@ SECTIONS {
 		*(.tbss .tbss.*)
 	}
 
+	.cls :
+	{
+		*(.cls)
+	}
+
 	.data :
 	{
 		*(.data .data.*)

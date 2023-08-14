@@ -156,6 +156,9 @@ impl TlsInitializer {
         #[cfg(target_arch = "aarch64")]
         let offset = max(16, 8 /* TODO FIXME: pass in the TLS segment's alignment */) + offset;
 
+        log::info!("adding exsting static tls section");
+        log::info!("{offset:0x?} {total_static_tls_size:0x?}");
+
         let range = offset .. (offset + tls_section.size);
         if self.static_section_offsets.contains_key(&range.start) || 
             self.static_section_offsets.contains_key(&(range.end - 1))
@@ -260,10 +263,18 @@ impl TlsInitializer {
             section_offsets: &RangeMap<usize, StrongSectionRefWrapper>,
             end_of_previous_range: &mut usize,
         ) {
+            log::info!("copying tls section data");
             for (range, sec) in section_offsets.iter() {
                 // Insert padding bytes into the data vec to ensure the section data is inserted at the correct index.
                 let num_padding_bytes = range.start.saturating_sub(*end_of_previous_range);
                 new_data.extend(core::iter::repeat(0).take(num_padding_bytes));
+                log::info!("--------------");
+                log::info!("mp start:{:0x?}", sec.mapped_pages.lock().start_address().value());
+                log::info!("  offset: {:0x?}", sec.mapped_pages_offset);
+                log::info!("{sec:0x?}");
+                log::info!("{num_padding_bytes:0x?}");
+                log::info!("{range:0x?}");
+                log::info!("{end_of_previous_range:0x?}");
 
                 // Insert the section data into the new data vec.
                 if sec.typ == SectionType::TlsData {
@@ -303,6 +314,7 @@ impl TlsInitializer {
             #[cfg(target_arch = "x86_64")]
             new_data.extend_from_slice(&[0u8; TLS_SELF_POINTER_SIZE]);
 
+            log::info!("Done static allocs");
             // Iterate through all dynamic TLS sections and copy their data into the new data image.
             // If needed (as on x86_64), we already pushed room for the TLS self pointer above.
             end_of_previous_range = TLS_SELF_POINTER_SIZE;
@@ -324,13 +336,17 @@ impl TlsInitializer {
             // because the virtual address of that new TLS data image copy will be unique.
             // Note that we only do this if the data_copy actually contains any TLS data.
             let self_ptr_offset = self.end_of_static_sections;
+            log::info!("ptr offset: {self_ptr_offset:#0x?}");
             let Some(dest_slice) = data_copy.get_mut(
                 self_ptr_offset .. (self_ptr_offset + TLS_SELF_POINTER_SIZE)
             ) else {
                 panic!("BUG: offset of TLS self pointer was out of bounds in the TLS data image:\n{:02X?}", data_copy);
             };
+            log::info!("ptr offset: {self_ptr_offset:#0x?}");
             let tls_self_ptr_value = dest_slice.as_ptr() as usize;
+            log::info!("CURRENT TLS: {tls_self_ptr_value:0x?}");
             dest_slice.copy_from_slice(&tls_self_ptr_value.to_ne_bytes());
+            log::info!("dest_slice: {:0x?}", dest_slice as * const _);
             TlsDataImage {
                 _data: Some(data_copy),
                 ptr:   tls_self_ptr_value,

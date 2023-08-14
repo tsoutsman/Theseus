@@ -1410,9 +1410,9 @@ impl CrateNamespace {
                 }
                 new_tls_section
             } else if is_cls {
-                // TODO: Alignment?
                 log::info!("cls section: {}", new_section.size);
-                let cls_offset = cls::allocate(new_section.size, 1);
+                // let cls_offset = cls::allocate(new_section.size, to);
+                let cls_offset = todo!();
                 let mut section = Arc::new(new_section);
 
                 let section_ref = Arc::get_mut(&mut section).unwrap();

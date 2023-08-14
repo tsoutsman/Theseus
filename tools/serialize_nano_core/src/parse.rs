@@ -19,7 +19,7 @@ pub fn parse_nano_core_symbol_file(symbol_str: String) -> Result<ParsedCrateItem
     let mut tls_data: Option<(Shndx, usize)> = None; 
     // .tbss does not exist anywhere in memory, so we don't need its vaddr
     let mut tls_bss: Option<Shndx> = None;
-    let mut cls: Option<(Shndx, usize)> = None;
+    let mut cls: Option<(usize, usize)> = None;
 
     /// An internal function that parses a section header's index, address and size.
     fn parse_section(str_ref: &str) -> Option<(Shndx, usize, usize)> {
@@ -85,7 +85,7 @@ pub fn parse_nano_core_symbol_file(symbol_str: String) -> Result<ParsedCrateItem
         } else if line.contains(".tbss ") && line.contains("NOBITS") {
             tls_bss = parse_section(line).map(|(shndx, ..)| shndx);
         } else if line.contains(".cls") && line.contains("PROGBITS") {
-            cls = parse_section(line).map(|(shndx, vaddr, ..)| (shndx, vaddr));
+            cls = parse_section(line).map(|(shndx, vaddr, size)| (vaddr, size));
         } else if line.contains(".data ") && line.contains("PROGBITS") {
             data = parse_section(line).map(|(shndx, vaddr, _)| (shndx, vaddr));
         } else if line.contains(".bss ") && line.contains("NOBITS") {
@@ -144,7 +144,6 @@ pub fn parse_nano_core_symbol_file(symbol_str: String) -> Result<ParsedCrateItem
         bss,
         tls_data,
         tls_bss,
-        cls,
     };
 
     // second, skip ahead to the start of the symbol table: a line which contains ".symtab" but does NOT contain "SYMTAB"
@@ -263,6 +262,7 @@ pub fn parse_nano_core_symbol_file(symbol_str: String) -> Result<ParsedCrateItem
             )?;
         } // end of loop over all lines
     }
+    crate_items.cls_section = cls;
 
     // trace!("parse_nano_core_symbol_file(): finished looping over symtab.");
     Ok(crate_items)
@@ -275,7 +275,7 @@ pub struct ParsedCrateItems {
     pub global_sections: BTreeSet<Shndx>,
     pub tls_sections: BTreeSet<Shndx>,
     pub data_sections: BTreeSet<Shndx>,
-    pub cls_section: Option<Shndx>,
+    pub cls_section: Option<(usize, usize)>,
     /// The set of other non-section symbols too, such as constants defined in assembly code.
     pub init_symbols: BTreeMap<String, usize>,
 }
@@ -289,7 +289,6 @@ struct MainSections {
     bss: Shndx,
     tls_data: Option<(Shndx, usize)>,
     tls_bss: Option<Shndx>,
-    cls: Option<(Shndx, usize)>,
 }
 
 struct IndexMeta {
@@ -398,22 +397,6 @@ fn add_new_section(
             global,
             virtual_address: tls_offset,
             offset: canary_offset,
-            size,
-        })
-    } else if main_sections
-        .cls
-        .map_or(false, |(shndx, _)| sec_ndx == shndx)
-    {
-        let cls_offset = virtual_address;
-        let cls_sec_data_vaddr = main_sections.cls.unwrap().1 + cls_offset;
-        let offset_from_rodata_start = cls_sec_data_vaddr - main_sections.rodata.1;
-
-        Some(SerializedSection {
-            name,
-            ty: SectionType::Cls,
-            global,
-            virtual_address,
-            offset: offset_from_rodata_start,
             size,
         })
     } else {

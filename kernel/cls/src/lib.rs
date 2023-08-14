@@ -8,6 +8,7 @@
 extern crate alloc;
 
 use alloc::vec::Vec;
+use core::{iter, ptr};
 
 pub use cls_macros::cpu_local;
 use cpu::CpuId;
@@ -45,11 +46,20 @@ pub mod __private {
 struct CpuLocalDataRegion {
     cpu: CpuId,
     _mapped_page: memory::MappedPages,
-    used: usize,
 }
 
 // TODO: Store size of used CLS in gs:[0].
-static CLS_SECTIONS: SpinMutex<Vec<CpuLocalDataRegion>> = SpinMutex::new(Vec::new());
+static STATE: SpinMutex<State> = SpinMutex::new(State {
+    sections: Vec::new(),
+    image: Vec::new(),
+    used: 0,
+});
+
+struct State {
+    sections: Vec<CpuLocalDataRegion>,
+    image: Vec<u8>,
+    used: usize,
+}
 
 pub fn init(cpu: CpuId) {
     use core::arch::asm;
@@ -67,12 +77,17 @@ pub fn init(cpu: CpuId) {
         .map_allocated_pages(page, PteFlags::VALID | PteFlags::WRITABLE)
         .unwrap();
 
-    CLS_SECTIONS.lock().push(CpuLocalDataRegion {
+    let cls_start_pointer = mapped_page.start_address().value() as *mut u8;
+
+    let mut locked = STATE.lock();
+    locked.sections.push(CpuLocalDataRegion {
         cpu,
         _mapped_page: mapped_page,
-        used: 0,
     });
-    log::info!("d");
+
+    unsafe {
+        ptr::copy_nonoverlapping(locked.image.as_ptr(), cls_start_pointer, locked.image.len())
+    };
 
     #[cfg(target_arch = "x86_64")]
     {
@@ -98,24 +113,21 @@ pub fn init(cpu: CpuId) {
     log::info!("done init");
 }
 
-pub fn allocate(len: usize, alignment: usize) -> usize {
-    log::info!("start alloc");
-    let cpu = cpu::current_cpu();
+pub fn allocate(len: usize, alignment: usize, image: &[u8]) -> usize {
+    log::info!("start alloc: {len:0x?} {alignment:0x?}");
+    log::info!("{image:0x?}");
+    let mut locked = STATE.lock();
 
-    let mut region_ref: Option<&mut CpuLocalDataRegion> = None;
-    let mut locked = CLS_SECTIONS.lock();
+    let offset = locked.used.next_multiple_of(alignment);
+    let num_alignment_bytes = offset - locked.used;
 
-    for region in locked.iter_mut() {
-        if region.cpu == cpu {
-            region_ref = Some(region);
-            break;
-        }
-    }
+    assert!(offset + len <= 4096);
 
-    let region_ref = region_ref.unwrap();
-    let offset = region_ref.used.next_multiple_of(alignment);
-    assert!(region_ref.used + len <= 4096);
-    region_ref.used += len;
+    locked
+        .image
+        .extend(iter::repeat(0).take(num_alignment_bytes));
+    locked.image.extend(image);
+    locked.used = offset + len;
 
     log::info!("end alloc");
     offset

@@ -10,7 +10,7 @@ use cpu::CpuId;
 
 /// A reference to the preemption counter for the current CPU (in CPU-local storage).
 // NOTE: This offset must be kept in sync with `cpu_local::PerCpuField`.
-#[cls_macros::cpu_local(12, cls_dep = false)]
+#[cls_macros::cpu_local(cls_dep = false)]
 static PREEMPTION_COUNT: u8 = 0;
 
 /// Prevents preemption (preemptive task switching) from occurring
@@ -19,6 +19,7 @@ static PREEMPTION_COUNT: u8 = 0;
 /// If this results in a transition from preemption being enabled to being disabled
 /// on this CPU, the local timer interrupt used for preemptive task switches
 /// will also be disabled until preemption is re-enabled.
+#[track_caller]
 pub fn hold_preemption() -> PreemptionGuard {
     hold_preemption_internal::<true>()
 }
@@ -41,6 +42,7 @@ pub fn hold_preemption_no_timer_disable() -> PreemptionGuard {
 ///
 /// If the const argument `DISABLE_TIMER` is `true`, the local timer interrupt
 /// will be disabled upon a transition from preemption being enabled to being disabled.
+#[track_caller]
 fn hold_preemption_internal<const DISABLE_TIMER: bool>() -> PreemptionGuard {
     let cpu_id = cpu::current_cpu();
 

@@ -877,7 +877,7 @@ fn add_new_section(
         let cls_offset = sec_vaddr;
         let cls_sec_data_vaddr = main_section_info.cls_info.unwrap().1 + cls_offset; 
 
-        let tls_section = LoadedSection::new(
+        let cls_section = Arc::new(LoadedSection::new(
             SectionType::Cls,
             sec_name,
             Arc::clone(rodata_pages),
@@ -887,14 +887,9 @@ fn add_new_section(
             sec_size,
             global,
             new_crate_weak_ref.clone(),
-        );
+        ));
         // Add this new TLS section to this namespace's TLS area image.
-        let cls_section_ref = namespace.tls_initializer.lock().add_existing_static_tls_section(
-            tls_section,
-            cls_offset,
-            main_section_info.total_tls_size,
-        ).map_err(|_| "BUG: failed to add static TLS section to the TLS area")?;
-        Some(cls_section_ref)
+        Some(cls_section)
     } else {
         crate_items.init_symbols.insert(String::from(sec_name.as_str()), sec_vaddr);
         None

@@ -42,6 +42,15 @@ pub(crate) fn into_loaded_crate(
     });
     let parent_crate_weak_ref = CowArc::downgrade(&loaded_crate);
 
+    if let Some((vaddr, size)) = serialized_crate.cls_section {
+        // panic!("a");
+        // TODO: Alignment
+        // panic!("{:0x?}, {:0x?}", vaddr, size);
+        cls::allocate(size, 1, unsafe { core::slice::from_raw_parts(vaddr as *const _, size) } );
+    } else {
+        panic!("b");
+    }
+
     let mut sections = HashMap::with_capacity(serialized_crate.sections.len());
     for (shndx, section) in serialized_crate.sections {
         // Skip zero-sized TLS sections, which are just markers, not real sections.
