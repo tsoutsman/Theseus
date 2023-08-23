@@ -62,6 +62,16 @@
 <a href="#62" id="62">62</a>
 <a href="#63" id="63">63</a>
 <a href="#64" id="64">64</a>
+<a href="#65" id="65">65</a>
+<a href="#66" id="66">66</a>
+<a href="#67" id="67">67</a>
+<a href="#68" id="68">68</a>
+<a href="#69" id="69">69</a>
+<a href="#70" id="70">70</a>
+<a href="#71" id="71">71</a>
+<a href="#72" id="72">72</a>
+<a href="#73" id="73">73</a>
+<a href="#74" id="74">74</a>
 </pre></div><pre class="rust"><code><span class="doccomment">//! Configuration and definitions for specific boards on aarch64 systems.
 //!
 //! | Board Name | Num CPUs  | Interrupt Controller | Secondary CPU Startup Method |
@@ -84,6 +94,14 @@
 }
 
 <span class="attr">#[derive(Debug, Copy, Clone)]
+</span><span class="kw">pub struct </span>PciEcamConfig {
+    <span class="kw">pub </span>base_address: PhysicalAddress,
+    <span class="kw">pub </span>size_bytes: usize,
+}
+
+<span class="doccomment">/// This excludes GICv2 because there&#39;s no way to send IPIs
+/// with GICv2 via the current driver API.
+</span><span class="attr">#[derive(Debug, Copy, Clone)]
 </span><span class="kw">pub enum </span>InterruptControllerConfig {
     GicV3(GicV3InterruptControllerConfig),
 }
@@ -110,6 +128,8 @@ pub enum SecondaryCoresStartup {
     </span><span class="comment">//
     // aarch64 manuals define the default timer IRQ number to be 30.
     </span><span class="kw">pub </span>cpu_local_timer_ppi: u8,
+
+    <span class="kw">pub </span>pci_ecam: PciEcamConfig,
 }
 
 <span class="comment">// by default &amp; on x86_64, the default.rs file is used
