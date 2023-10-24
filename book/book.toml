@@ -1,5 +1,5 @@
 [book]
-title = "The Theseus OS Book"
+title = "The Theseus OOS Book"
 authors = ["Kevin Boos", "Lin Zhong"]
 description = "Describes the design principles and implementation details of Theseus, a companion to its source-level docs."
 multilingual = false
