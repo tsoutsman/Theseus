@@ -61,6 +61,7 @@ var sourcesIndex = JSON.parse('{\
 "framebuffer_printer":["",[],["lib.rs"]],\
 "fs_node":["",[],["lib.rs"]],\
 "gdt":["",[],["lib.rs"]],\
+"generic_timer_aarch64":["",[],["lib.rs"]],\
 "gic":["",[],["lib.rs"]],\
 "heap":["",[],["lib.rs"]],\
 "heapfile":["",[],["lib.rs"]],\
@@ -110,7 +111,7 @@ var sourcesIndex = JSON.parse('{\
 "page_table_entry":["",[],["lib.rs"]],\
 "panic_entry":["",[],["lib.rs"]],\
 "panic_wrapper":["",[],["lib.rs"]],\
-"path":["",[],["component.rs","lib.rs"]],\
+"path":["",[],["lib.rs"]],\
 "pci":["",[],["lib.rs"]],\
 "percent_encoding":["",[],["lib.rs"]],\
 "physical_nic":["",[],["lib.rs"]],\
