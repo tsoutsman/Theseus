@@ -46,3 +46,7 @@ github_pages/doc/
 # TODO: Remove once std is upstreamed
 .cargo/
 /ports/rust
+
+# TODO: Remove
+extra_files/test_executable
+

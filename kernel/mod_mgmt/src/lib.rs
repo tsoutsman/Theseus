@@ -33,6 +33,7 @@ pub use crate_metadata::*;
 pub mod parse_nano_core;
 pub mod replace_nano_core_crates;
 mod serde;
+mod executable;
 
 
 /// The name of the directory that contains all of the CrateNamespace files.
