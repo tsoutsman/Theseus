@@ -13,6 +13,7 @@
   "merge-functions": "disabled",
   "os": "theseus",
   "panic-strategy": "unwind",
+  "position-independent-executables": true,
   "relocation-model": "static",
   "relro-level": "full",
   "target-pointer-width": "64",

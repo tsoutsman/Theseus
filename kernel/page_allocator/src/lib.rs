@@ -326,14 +326,14 @@ impl<P: PageSize> AllocatedPages<P> {
         let end_of_first = at_page - 1;
 
         let (first, second) = if at_page == *self.start() && at_page <= *self.end() {
-            let first  = PageRange::<P>::empty();
-            let second = PageRange::<P>::new(at_page, *self.end());
+			let first = PageRange::<P>::new(at_page, *self.end());
+            let second  = PageRange::<P>::empty();
             (first, second)
         } 
         else if at_page == (*self.end() + 1) && end_of_first >= *self.start() {
-            let first  = PageRange::<P>::new(*self.start(), *self.end()); 
-            let second = PageRange::<P>::empty();
-            (first, second)
+            let first = PageRange::<P>::empty();
+			let second  = PageRange::<P>::new(*self.start(), *self.end());
+			(first, second)
         }
         else if at_page > *self.start() && end_of_first <= *self.end() {
             let first  = PageRange::<P>::new(*self.start(), end_of_first);

@@ -20,7 +20,7 @@ extern crate libc; // for basic C types/typedefs used in libc
 
 use core::{
     cmp::{min, max},
-    ops::{AddAssign, SubAssign, Range},
+    ops::Range,
 };
 use alloc::{collections::BTreeSet, string::{String, ToString}, sync::Arc, vec::Vec};
 use getopts::{Matches, Options};
@@ -43,7 +43,7 @@ pub fn main(args: Vec<String>) -> isize {
         Err(_f) => {
             println!("{}", _f);
             print_usage(opts);
-            return -1; 
+            return -1;
         }
     };
 
@@ -57,7 +57,7 @@ pub fn main(args: Vec<String>) -> isize {
         Err(e) => {
             println!("Error:\n{}", e);
             -1
-        }    
+        }
     }
 }
 
@@ -80,9 +80,9 @@ fn rmain(matches: Matches) -> Result<c_int, String> {
     let file_mp = file.as_mapping().map_err(String::from)?;
     let byte_slice: &[u8] = file_mp.as_slice(0, file.len())?;
 
-    let (mut segments, entry_point, _vaddr_offset, elf_file) = parse_and_load_elf_executable(byte_slice)?;
+    let (mut segments, entry_point, elf_file) = parse_and_load_elf_executable(byte_slice)?;
     debug!("Parsed ELF executable, moving on to overwriting relocations.");
-    
+
     // Now, overwrite (recalculate) the relocations that refer to symbols that already exist in Theseus,
     // most important of which are static data sections, 
     // as it is logically incorrect to have duplicates of data that are supposed to be global system-wide singletons.
@@ -102,7 +102,7 @@ fn rmain(matches: Matches) -> Result<c_int, String> {
     segments.iter().enumerate().for_each(|(i, seg)| debug!("Segment {} needed {} relocations to be rewritten.", i, seg.sections_i_depend_on.len()) );
 
     let _executable = LoadedExecutable { segments, entry_point }; // must persist through the entire executable's runtime.
-    
+
     debug!("Jumping to entry point {:#X}", entry_point);
 
     let dummy_args = ["hello", "world"];
@@ -119,6 +119,8 @@ fn rmain(matches: Matches) -> Result<c_int, String> {
 
 /// Corresponds to C function:  `int foo()`
 use libc::c_int;
+use xmas_elf::symbol_table::Entry;
+
 type StartFunction = fn(args: &[&str], env: &[&str]) -> c_int;
 
 
@@ -148,32 +150,6 @@ pub struct LoadedSegment {
     sections_i_depend_on: Vec<StrongDependency>,
 }
 
-#[derive(Debug, Copy, Clone)]
-enum Offset {
-    Positive(usize),
-    Negative(usize),
-}
-impl Offset {
-    /// Returns a new `Offset` object that represents the adjustment
-    /// needed to go from `first` to `second`.
-    fn new(first: usize, second: usize) -> Offset {
-        if first < second {
-            Offset::Negative(second - first)
-        } else {
-            Offset::Positive(first - second)
-        }
-    }
-
-    /// Mutably adjusts the given `obj` by the given `offset`.
-    fn adjust_assign<T: AddAssign<usize> + SubAssign<usize>>(obj: &mut T, offset: Offset) {
-        match offset {
-            Offset::Negative(subtrahend) => *obj -= subtrahend,
-            Offset::Positive(addend)     => *obj += addend,
-        }
-    }
-}
-
-
 /// Parses an elf executable file from the given slice of bytes and load it into memory.
 ///
 /// # Important note about memory mappings
@@ -195,31 +171,22 @@ impl Offset {
 /// 4. A reference to the parsed `ElfFile`, whose lifetime is tied to the given `file_contents` parameter.
 fn parse_and_load_elf_executable(
     file_contents: &[u8],
-) -> Result<(Vec<LoadedSegment>, VirtualAddress, Offset, ElfFile), String> {
+) -> Result<(Vec<LoadedSegment>, VirtualAddress, ElfFile), String> {
     debug!("Parsing Elf executable of size {}", file_contents.len());
 
     let elf_file = ElfFile::new(file_contents).map_err(String::from)?;
 
     // check that elf_file is an executable type 
     let typ = elf_file.header.pt2.type_().as_type();
-    if typ != xmas_elf::header::Type::Executable {
+    if typ != xmas_elf::header::Type::SharedObject {
         error!("parse_elf_executable(): ELF file has wrong type {:?}, must be an Executable Elf File!", typ);
-        return Err("not a relocatable elf file".into());
+        return Err("not an executable".into());
     }
 
-    // Currently we aren't building C programs in a position-independent manner,
-    // so we have to load the C executable at the exact virtual address it specifies (since it's non-relocatable).
-
-    // TODO FIXME: remove this old approach of invalidly loading non-PIE executables at other virtual addresses than what they expect.
-    //             Also remove the whole idea of the "Offset", since that will be built into position-independent executables.
-    //             This is because this only works for SUPER SIMPLE C programs, in which we can just maintain the *relative* position of each segment
-    //             in memory with respect to other segments to ensure they're consistent. 
-    // 
-    // Not really necessary to do this, but we iterate over all segments first to find the total range of virtual pages we must allocate. 
     let (mut start_vaddr, mut end_vaddr) = (usize::MAX, usize::MIN);
     let mut num_segments = 0;
     for prog_hdr in elf_file.program_iter() {
-        if prog_hdr.get_type() == Ok(xmas_elf::program::Type::Load) {
+        if prog_hdr.get_type() == Ok(xmas_elf::program::Type::Load) || prog_hdr.get_type() == Ok(xmas_elf::program::Type::Phdr) {
             num_segments += 1;
             start_vaddr = min(start_vaddr, prog_hdr.virtual_addr() as usize);
             end_vaddr   = max(end_vaddr,   prog_hdr.virtual_addr() as usize + prog_hdr.mem_size() as usize);
@@ -230,18 +197,15 @@ fn parse_and_load_elf_executable(
 
     // Allocate enough virtually-contiguous space for all the segments together.
     let total_size_in_bytes = end_vaddr - start_vaddr;
-    let mut all_pages = memory::allocate_pages_by_bytes_at(
-        VirtualAddress::new(start_vaddr).ok_or_else(|| format!("Segment had invalid virtual address {start_vaddr:#X}"))?,
-        total_size_in_bytes
-    ).map_err(|_| format!("Failed to allocate {total_size_in_bytes} bytes at {start_vaddr}"))?;
-    let vaddr_adjustment = Offset::new(all_pages.start_address().value(), start_vaddr); 
+    let mut all_pages = memory::allocate_pages_by_bytes(total_size_in_bytes
+    ).ok_or_else(|| format!("Failed to allocate {total_size_in_bytes}"))?;
+    let file_start = all_pages.start_address();
 
     // Iterate through each segment again and map them into pages we just allocated above,
     // copying their segment data to the proper location.
     for (segment_ndx, prog_hdr) in elf_file.program_iter().enumerate() {
-        // debug!("\nLooking at {}", prog_hdr);
-        if prog_hdr.get_type() != Ok(xmas_elf::program::Type::Load) {
-            // warn!("Skipping non-LOAD segment {:?}", prog_hdr);
+        log::info!("looking at segment {segment_ndx} {prog_hdr:#?}");
+        if prog_hdr.get_type() == Ok(xmas_elf::program::Type::Load) || prog_hdr.get_type() == Ok(xmas_elf::program::Type::Phdr) {
             continue;
         }
 
@@ -256,24 +220,24 @@ fn parse_and_load_elf_executable(
         let file_size_in_bytes = prog_hdr.file_size() as usize;
         if memory_size_in_bytes == 0 {
             // warn!("Skipping zero-sized LOAD segment {:?}", prog_hdr);
-            continue; 
+            continue;
         }
 
-        let mut start_vaddr = VirtualAddress::new(prog_hdr.virtual_addr() as usize).ok_or_else(|| {
+        let offset = VirtualAddress::new(prog_hdr.virtual_addr() as usize).ok_or_else(|| {
             error!("Program header virtual address was invalid: {:?}", prog_hdr);
             "Program header had an invalid virtual address"
         })?;
-        Offset::adjust_assign(&mut start_vaddr, vaddr_adjustment);
+        let start_vaddr = file_start + offset;
         let end_page = Page::containing_address(start_vaddr + (memory_size_in_bytes - 1));
 
-        // debug!("Splitting {:?} after end page {:?}", all_pages, end_page);
+        debug!("Splitting {:?} after end page {:?}", all_pages, end_page);
 
         let (this_ap, remaining_pages) = all_pages.split(end_page + 1).map_err(|_ap|
             format!("Failed to split allocated pages {_ap:?} at page {start_vaddr:#X}")
         )?;
         all_pages = remaining_pages;
-        // debug!("Successfully split pages into {:?} and {:?}", this_ap, all_pages);
-        // debug!("Adjusted segment vaddr: {:#X}, size: {:#X}, {:?}", start_vaddr, memory_size_in_bytes, this_ap.start_address());
+        debug!("Successfully split pages into {:?} and {:?}", this_ap, all_pages);
+        debug!("Adjusted segment vaddr: {:#X}, size: {:#X}, {:?}", start_vaddr, memory_size_in_bytes, this_ap.start_address());
 
         let initial_flags = convert_to_pte_flags(prog_hdr.flags());
         let mmi = task::with_current_task(|t| t.mmi.clone()).unwrap();
@@ -283,7 +247,7 @@ fn parse_and_load_elf_executable(
             .map_err(String::from)?;
 
         // Copy data from this section into the correct offset into our newly-mapped pages
-        let offset_into_mp = mp.offset_of_address(start_vaddr).ok_or_else(|| 
+        let offset_into_mp = mp.offset_of_address(start_vaddr).ok_or_else(||
             format!("BUG: destination address {start_vaddr:#X} wasn't within segment's {mp:?}")
         )?;
         match prog_hdr.get_data(&elf_file).map_err(String::from)? {
@@ -323,18 +287,17 @@ fn parse_and_load_elf_executable(
         });
     }
 
-    let entry_point = elf_file.header.pt2.entry_point() as usize;
-    let mut entry_point_vaddr = VirtualAddress::new(entry_point)
-        .ok_or_else(|| format!("ELF entry point was invalid virtual address: {entry_point:#X}"))?;
-    Offset::adjust_assign(&mut entry_point_vaddr, vaddr_adjustment);
-    debug!("ELF had entry point {:#X}, adjusted to {:#X}", entry_point, entry_point_vaddr);
+    let entry_offset = VirtualAddress::new(elf_file.header.pt2.entry_point() as usize).ok_or("invalid entry point address")?;
+    let entry_vaddr = entry_offset + all_pages.start_address();
 
-    Ok((mapped_segments, entry_point_vaddr, vaddr_adjustment, elf_file))
+    debug!("ELF had entry point {:#X}, adjusted to {:#X}", entry_offset, entry_vaddr);
+
+    Ok((mapped_segments, entry_vaddr, elf_file))
 }
 
 
 
-/// This function uses the relocation sections in the given `ElfFile` to 
+/// This function uses the relocation sections in the given `ElfFile` to
 /// rewrite relocations that depend on source sections already existing and currently loaded in Theseus. 
 ///
 /// This is necessary to ensure that the newly-loaded ELF executable depends on and references 
@@ -353,20 +316,20 @@ fn overwrite_relocations(
     // Iterate over every non-zero relocation section in the file
     for sec in elf_file.section_iter().filter(|sec| sec.get_type() == Ok(ShType::Rela) && sec.size() != 0) {
         use xmas_elf::sections::SectionData::Rela64;
-        if verbose_log { 
+        if verbose_log {
             trace!("Found Rela section name: {:?}, type: {:?}, target_sec_index: {:?}", 
                 sec.get_name(elf_file), sec.get_type(), sec.info()
-            ); 
+            );
         }
 
         let rela_sec_name = sec.get_name(elf_file).unwrap();
         // Skip debug special sections for now, those can be processed later. 
-        if rela_sec_name.starts_with(".rela.debug")  { 
+        if rela_sec_name.starts_with(".rela.debug")  {
             continue;
         }
         // Skip .eh_frame relocations, since they are all local to the .text section
         // and cannot depend on external symbols directly
-        if rela_sec_name == ".rela.eh_frame"  { 
+        if rela_sec_name == ".rela.eh_frame"  {
             continue;
         }
 
@@ -376,14 +339,14 @@ fn overwrite_relocations(
                 let err = format!("Found Rela section that wasn't able to be parsed as Rela64: {sec:?}");
                 error!("{}", err);
                 return Err(err);
-            } 
+            }
         };
 
         // The target section (segment) is where we write the relocation data to.
         // The source section is where we get the data from. 
         // There is one target section per rela section (`rela_array`), and one source section per `rela_entry` in each `rela_array`.
         // The "info" field in the Rela section specifies which section is the target of the relocation.
-            
+
         // Get the target section (that we already loaded) for this rela_array Rela section.
         let target_sec_shndx = sec.info() as usize;
         let target_segment = segments.iter_mut()
@@ -393,7 +356,7 @@ fn overwrite_relocations(
                 error!("{}", err);
                 err
             })?;
-        
+
         let mut target_segment_dependencies: Vec<StrongDependency> = Vec::new();
         let target_segment_start_addr = target_segment.bounds.start;
         let target_segment_slice: &mut [u8] = target_segment.mp.as_slice_mut(
@@ -416,13 +379,13 @@ fn overwrite_relocations(
                     rela_entry.get_offset(), rela_entry.get_addend(), rela_entry.get_symbol_table_index(), rela_entry.get_type());
             }
 
-            let source_sec_shndx = source_sec_entry.shndx() as usize; 
+            let source_sec_shndx = source_sec_entry.shndx() as usize;
             let source_sec_name = match source_sec_entry.get_name(elf_file) {
                 Ok(name) => name,
                 _ => continue,
             };
 
-            if verbose_log { 
+            if verbose_log {
                 let source_sec_header_name = source_sec_entry.get_section_header(elf_file, rela_entry.get_symbol_table_index() as usize)
                     .and_then(|s| s.get_name(elf_file));
                 trace!("             --> Points to relevant section [{}]: {:?}", source_sec_shndx, source_sec_header_name);
@@ -438,12 +401,12 @@ fn overwrite_relocations(
             if let Some(existing_source_sec) = namespace.get_symbol_or_load(&demangled, None, mmi, verbose_log).upgrade() {
                 let mut relocation_entry = RelocationEntry::from_elf_relocation(rela_entry);
                 let original_relocation_offset = relocation_entry.offset;
-                
+
                 // Here, in an executable ELF file, the relocation entry's "offset" represents an absolute virtual address
                 // rather than an offset from the beginning of the section/segment (I think).
                 // Therefore, we need to adjust that value before we invoke `write_relocation()`, 
                 // which expects a regular `offset` + an offset into the target segment's mapped pages. 
-                let relocation_offset_as_vaddr = VirtualAddress::new(relocation_entry.offset).ok_or_else(|| 
+                let relocation_offset_as_vaddr = VirtualAddress::new(relocation_entry.offset).ok_or_else(||
                     format!("relocation_entry.offset {:#X} was not a valid virtual address", relocation_entry.offset)
                 )?;
                 let offset_into_target_segment = relocation_offset_as_vaddr.value() - target_segment_start_addr.value();
@@ -452,7 +415,7 @@ fn overwrite_relocations(
                 // TODO: this is hacky as hell, we should just create a new `write_relocation()` function instead.
                 relocation_entry.offset = 0;
 
-                if verbose_log { 
+                if verbose_log {
                     debug!("                 Performing relocation target {:#X} + {:#X} <-- source {}", 
                         target_segment_start_addr, offset_into_target_segment, existing_source_sec.name
                     );
@@ -465,7 +428,7 @@ fn overwrite_relocations(
                     verbose_log
                 )?;
                 relocation_entry.offset = original_relocation_offset;
-    
+
                 // Here, we typically tell the existing_source_sec that the target_segment is dependent upon it.
                 // However, the `WeakDependent` entry type only accepts a weak section reference at the moment,
                 // and we don't have that -- we only have a target segment. 
@@ -476,13 +439,13 @@ fn overwrite_relocations(
                 //     relocation: relocation_entry,
                 // };
                 // existing_source_sec.inner.write().sections_dependent_on_me.push(weak_dep);
-                
+
                 // tell the target_sec that it has a strong dependency on the existing_source_sec
                 let strong_dep = StrongDependency {
                     section: Arc::clone(&existing_source_sec),
                     relocation: relocation_entry,
                 };
-                target_segment_dependencies.push(strong_dep);          
+                target_segment_dependencies.push(strong_dep);
             } else {
                 trace!("Skipping relocation that points to non-Theseus section: {:?}", demangled);
             }
@@ -499,7 +462,7 @@ fn overwrite_relocations(
 fn convert_to_pte_flags(prog_flags: xmas_elf::program::Flags) -> PteFlags {
     PteFlags::new()
         .valid(prog_flags.is_read())
-        .writable(prog_flags.is_read())
+        .writable(prog_flags.is_write())
         .executable(prog_flags.is_execute())
 }
 

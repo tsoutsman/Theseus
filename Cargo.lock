@@ -3775,6 +3775,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "test_executable"
+version = "0.1.0"
+dependencies = [
+ "app_io",
+ "heap",
+ "panic_entry",
+]
+
+[[package]]
 name = "test_filerw"
 version = "0.1.0"
 dependencies = [

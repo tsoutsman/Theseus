@@ -42,3 +42,6 @@ github_pages/doc/
 
 # macOS directory stores
 /**/.DS_Store
+
+# TODO: Remove
+extra_files/test_executable
