@@ -83,6 +83,7 @@ export override RUSTFLAGS += --emit=obj
 export override RUSTFLAGS += -C debuginfo=2
 ## promote unused must-use types (like Result) to an error
 export override RUSTFLAGS += -D unused-must-use
+export override RUSTFLAGS += -C target-feature=-crt-static
 
 ## This prevents monomorphized instances of generic functions from being shared across crates.
 ## It vastly simplifies the procedure of finding missing symbols in the crate loader,

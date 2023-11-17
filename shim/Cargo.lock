@@ -24,6 +24,7 @@ checksum = "1956f5517128a2b6f23ab2dadf1a976f4f5b27962e7724c2bf3d45e539ec098c"
 name = "theseus-shim"
 version = "0.1.0"
 dependencies = [
+ "compiler_builtins",
  "rustc-std-workspace-alloc",
  "rustc-std-workspace-core",
  "theseus_ffi",

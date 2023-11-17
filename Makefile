@@ -1,4 +1,4 @@
-### This makefile is the top-level build script that builds all the crates in subdirectories 
+## This makefile is the top-level build script that builds all the crates in subdirectories 
 ### and combines them into the final OS .iso image.
 ### It also provides convenient targets for running and debugging Theseus and using GDB on your host computer.
 SHELL := /bin/bash
@@ -342,7 +342,9 @@ ifeq ($(std),yes)
 	@echo "theseus-shim = { path = \"../../../../shim\", features = ['rustc-dep-of-std'] }" >> $(RUST_SOURCE)/library/std/Cargo.toml
 
 ##	Build the compiler
-	@cd $(RUST_SOURCE) && RUSTFLAGS="" CARGOFLAGS="" ./x.py build library --stage 1
+	cd $(RUST_SOURCE) && RUSTFLAGS="" CARGOFLAGS="" ./x.py build library --stage 1
+	cd $(RUST_SOURCE) && RUSTFLAGS="" CARGOFLAGS="" ./x.py build src/llvm-project/lld
+
 	@cd $(ROOT_DIR)
 
 ##	Remove the last line of std/Cargo.toml
@@ -521,6 +523,26 @@ theseus_cargo: $(wildcard $(THESEUS_CARGO)/Cargo.*)  $(wildcard$(THESEUS_CARGO)/
 
 ### Removes the build directory and all compiled Rust objects.
 clean:
+ifeq ($(std),yes)
+	rm -r $(ROOT_DIR)/.cargo
+
+##  Cache std/Cargo.toml
+	cp $(RUST_SOURCE)/library/std/Cargo.toml $(ROOT_DIR)/std-cargo.toml
+##	Remove the last line of std/Cargo.toml
+	@$(HEAD) -n -1 $(RUST_SOURCE)/library/std/Cargo.toml > $(ROOT_DIR)/temp-std-cargo.toml
+	@mv $(ROOT_DIR)/temp-std-cargo.toml $(RUST_SOURCE)/library/std/Cargo.toml
+##	Add the correct dependency path, since the dependency path in std/Cargo.toml assumes that std is
+##	being built using -Zbuild-std.
+	@echo "theseus-shim = { path = \"../../../../shim\", features = ['rustc-dep-of-std'] }" >> $(RUST_SOURCE)/library/std/Cargo.toml
+
+	cd $(RUST_SOURCE) && RUSTFLAGS="" CARGOFLAGS="" ./x.py clean
+
+##	Remove the last line of std/Cargo.toml
+	@$(HEAD) -n -1 $(RUST_SOURCE)/library/std/Cargo.toml > $(ROOT_DIR)/temp-std-cargo.toml
+	@mv $(ROOT_DIR)/temp-std-cargo.toml $(RUST_SOURCE)/library/std/Cargo.toml
+## Restore previous std/Cargo.toml
+	mv $(ROOT_DIR)/std-cargo.toml $(RUST_SOURCE)/library/std/Cargo.toml
+endif
 	@rm -rf $(BUILD_DIR)
 	cargo clean
 

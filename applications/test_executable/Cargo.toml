@@ -4,6 +4,3 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-app_io = { path = "../../kernel/app_io" }
-heap = { path = "../../kernel/heap" }
-panic_entry = { path = "../../kernel/panic_entry" }

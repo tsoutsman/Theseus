@@ -13,3 +13,7 @@ theseus_ffi = { path = "../libs/theseus_ffi" }
 
 [features]
 rustc-dep-of-std = ['alloc', 'compiler_builtins', 'core', 'theseus_ffi/rustc-dep-of-std']
+
+[lib]
+crate-type = ["rlib"]
+
