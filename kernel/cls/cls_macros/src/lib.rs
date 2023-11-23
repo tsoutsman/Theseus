@@ -165,7 +165,7 @@ pub fn cpu_local(args: TokenStream, input: TokenStream) -> TokenStream {
 
                 tpidr_el1 + offset
             };
-            unsafe { &mut*(ptr as *mut #ty) }
+            unsafe { &mut *(ptr as *mut #ty) }
         }
     };
 

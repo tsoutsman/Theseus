@@ -34,6 +34,7 @@
     - [Memory Management](subsystems/memory.md)
         - [Mapping Virtual to Physical Memory](subsystems/memory_mapping.md)
         - [Heap Allocators](subsystems/heap.md)
+        - [CPU-local Storage](subsystems/cls.md)
     - [Task Management](subsystems/task.md)
         - [Task Management Invariants](subsystems/task_invariants.md)
     - [Display and Window Management](subsystems/display/display.md)

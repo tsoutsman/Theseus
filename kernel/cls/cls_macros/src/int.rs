@@ -94,7 +94,7 @@ pub(crate) fn int_functions(ty: &Type, name: &Ident) -> Option<TokenStream> {
                         "add {ptr}, {tp_1}, {offset}",
                         concat!("ldxr", #aarch64_instr_width, " {value", #aarch64_reg_modifier,"}, [{ptr}]"),
 
-                        // Make sure task wasn't migrated between msr and ldxr.
+                        // Make sure task wasn't migrated between mrs and ldxr.
                         "mrs {tp_2}, tpidr_el1",
                         "cmp {tp_1}, {tp_2}",
                         "b.ne 2b",
