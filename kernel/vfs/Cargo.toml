@@ -1,0 +1,9 @@
+[package]
+name = "vfs"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+path = { path = "../path" }
+memory = { path = "../memory" }
+spin = "0.9.1"
