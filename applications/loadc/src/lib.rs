@@ -201,6 +201,12 @@ fn parse_and_load_elf_executable(
     ).ok_or_else(|| format!("Failed to allocate {total_size_in_bytes}"))?;
     let file_start = all_pages.start_address();
 
+    for section in elf_file.section_iter() {
+        let name = section.get_name(&elf_file);
+        log::info!("section: {name:#?} {:?}", section.get_type());
+    }
+    log::info!("done");
+
     // Iterate through each segment again and map them into pages we just allocated above,
     // copying their segment data to the proper location.
     for (segment_ndx, prog_hdr) in elf_file.program_iter().enumerate() {

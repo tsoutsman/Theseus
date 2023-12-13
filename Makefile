@@ -331,6 +331,7 @@ ifeq ($(std),yes)
 
 	git -C $(RUST_SOURCE) checkout 3167b29
 	git -C $(RUST_SOURCE) submodule update --init --depth 1
+	git -C $(RUST_SOURCE) stash push $(RUST_SOURCE)/library/std/Cargo.toml
 
 ##  Cache std/Cargo.toml
 	cp $(RUST_SOURCE)/library/std/Cargo.toml $(ROOT_DIR)/std-cargo.toml
