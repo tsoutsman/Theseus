@@ -16,6 +16,7 @@
 //! Instead, free chunks are lazily merged only when running out of address space
 //! or when needed to fulfill a specific request.
 
+#![feature(core_intrinsics)]
 #![no_std]
 
 extern crate alloc;
@@ -30,7 +31,7 @@ use intrusive_collections::Bound;
 mod static_array_rb_tree;
 // mod static_array_linked_list;
 
-use core::{borrow::Borrow, cmp::{Ordering, max, min}, fmt, ops::{Deref, DerefMut}};
+use core::{borrow::Borrow, cmp::{Ordering, max, min}, fmt, ops::{Deref, DerefMut}, intrinsics::unlikely};
 use kernel_config::memory::*;
 use memory_structs::{VirtualAddress, Page, PageRange, PageSize, Page4K, Page2M, Page1G};
 use spin::{Mutex, Once};
@@ -249,6 +250,10 @@ impl<P: PageSize> AllocatedPages<P> {
         self.pages.size_in_pages()
     }
 
+	pub const fn is_empty(&self) -> bool {
+		self.size_in_pages() == 0
+	}
+
 	/// Returns the starting `Page` in this range of pages.
 	pub const fn start(&self) -> &Page<P> {
 		self.pages.start()
@@ -323,33 +328,27 @@ impl<P: PageSize> AllocatedPages<P> {
 		self,
 		at_page: Page<P>,
 	) -> Result<(AllocatedPages<P>, AllocatedPages<P>), AllocatedPages<P>> {
-        let end_of_first = at_page - 1;
-
-        let (first, second) = if at_page == *self.start() && at_page <= *self.end() {
-            let first  = PageRange::<P>::empty();
+		if unlikely(self.is_empty()) {
+			Err(self)
+		} else if at_page == *self.start() {
+            Ok((Self::empty(), self))
+        }  else if at_page == *self.end() + 1{
+			Ok((self, Self::empty()))
+        } else if *self.start() < at_page && at_page <= *self.end() {
+            let first  = PageRange::<P>::new(*self.start(), at_page - 1);
             let second = PageRange::<P>::new(at_page, *self.end());
-            (first, second)
-        } 
-        else if at_page == (*self.end() + 1) && end_of_first >= *self.start() {
-            let first  = PageRange::<P>::new(*self.start(), *self.end()); 
-            let second = PageRange::<P>::empty();
-            (first, second)
-        }
-        else if at_page > *self.start() && end_of_first <= *self.end() {
-            let first  = PageRange::<P>::new(*self.start(), end_of_first);
-            let second = PageRange::<P>::new(at_page, *self.end());
-            (first, second)
-        }
-        else {
-            return Err(self);
-        };
 
-        // ensure the original AllocatedPages doesn't run its drop handler and free its pages.
-        core::mem::forget(self);   
-        Ok((
-            AllocatedPages::<P> { pages: first }, 
-            AllocatedPages::<P> { pages: second },
-        ))
+	        // ensure the original AllocatedPages doesn't run its drop handler and free its pages.
+	        core::mem::forget(self);   
+
+	        Ok((
+	            AllocatedPages::<P> { pages: first }, 
+	            AllocatedPages::<P> { pages: second },
+	        ))
+        } else {
+            Err(self)
+        }
+
     }
 }
 
