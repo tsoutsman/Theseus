@@ -1,0 +1,14 @@
+[package]
+name = "async_channel"
+version = "0.1.0"
+authors = ["Klim Tsoutsman <klim@tsoutsman.com>"]
+description = "A bounded, multi-producer, multi-consumer asynchronous channel"
+edition = "2021"
+
+[dependencies]
+async_wait_queue = { path = "../async_wait_queue" }
+dreadnought = { path = "../dreadnought" }
+futures = { version = "0.3.28", default-features = false }
+mpmc = "0.1.6"
+sync = { path = "../../libs/sync" }
+sync_spin = { path = "../../libs/sync_spin" }
