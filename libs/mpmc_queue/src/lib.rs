@@ -14,9 +14,10 @@ use core::{
     sync::atomic::{AtomicUsize, Ordering},
 };
 use sync::{Mutex, MutexFlavor, MutexGuard};
+use sync_spin::Spin;
 
 /// A growable, first-in first-out, multi-producer, multi-consumer, queue.
-pub struct Queue<T, F>
+pub struct Queue<T, F = Spin>
 where
     F: MutexFlavor,
 {
@@ -181,12 +182,14 @@ fn box_pointer<T>(item: T) -> NonNull<T> {
 
 #[cfg(test)]
 mod tests {
-    use super::Queue;
     use std::{
         sync::atomic::{AtomicBool, Ordering},
         thread,
     };
+
     use sync_spin::Spin;
+
+    use super::Queue;
 
     #[test]
     fn test_spsc() {

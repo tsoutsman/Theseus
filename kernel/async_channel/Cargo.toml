@@ -6,7 +6,7 @@ description = "A bounded, multi-producer, multi-consumer asynchronous channel"
 edition = "2021"
 
 [dependencies]
-async_wait_queue = { path = "../async_wait_queue" }
+async-lock = { version = "3.2.0", default-features = false }
 dreadnought = { path = "../dreadnought" }
 futures = { version = "0.3.28", default-features = false }
 mpmc = "0.1.6"
