@@ -1123,6 +1123,13 @@ fn write_relocation_arch(
             if verbose_log { trace!("                    target_ptr: {:p}, source_val: {:#X} (from source_sec_vaddr {:#X})", target_ref.as_ptr(), source_val, source_sec_vaddr); }
             target_ref.copy_from_slice(&source_val.to_ne_bytes());
         }
+        // Used in PIE.
+        R_X86_64_RELATIVE => {
+            let target_range = target_sec_offset .. (target_sec_offset + size_of::<u64>());
+            let target_ref = &mut target_sec_slice[target_range];
+            let source_val = source_sec_vaddr.value().wrapping_add(relocation_entry.addend) as u64;
+            target_ref.copy_from_slice(&source_val.to_ne_bytes());
+        }
         // R_X86_64_GOTTPOFF => {
         //     // 32-bit signed PC-relative offset to the GOT entry for the IE (Initial Exec(utable) TLS model))
         //     debug!("R_X86_64_GOTTPOFF: {:#X?}", relocation_entry);
